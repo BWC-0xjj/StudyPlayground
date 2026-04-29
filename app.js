@@ -30,7 +30,7 @@ const el = {
 let audioContext = null;
 let bgmTimer = null;
 let bgmStep = 0;
-let bgmEnabled = false;
+let bgmEnabled = true;
 
 function loadProgress() {
   const fallback = { stars: 0, streak: 0, mastered: {}, wrong: [] };
@@ -68,8 +68,13 @@ function playBgmStep() {
   bgmStep += 1;
 }
 
-function toggleBgm() {
-  bgmEnabled = !bgmEnabled;
+function setBgmButtonState() {
+  el.bgmToggle.textContent = bgmEnabled ? "BGM オフ" : "BGM オン";
+  el.bgmToggle.setAttribute("aria-pressed", String(bgmEnabled));
+}
+
+function startBgm() {
+  bgmEnabled = true;
   if (bgmEnabled) {
     const AudioEngine = window.AudioContext || window.webkitAudioContext;
     if (!AudioEngine) {
@@ -81,13 +86,26 @@ function toggleBgm() {
     audioContext = audioContext || new AudioEngine();
     audioContext.resume();
     playBgmStep();
-    bgmTimer = window.setInterval(playBgmStep, 360);
-  } else {
-    window.clearInterval(bgmTimer);
-    bgmTimer = null;
+    if (!bgmTimer) bgmTimer = window.setInterval(playBgmStep, 360);
   }
-  el.bgmToggle.textContent = bgmEnabled ? "BGM オフ" : "BGM オン";
-  el.bgmToggle.setAttribute("aria-pressed", String(bgmEnabled));
+  setBgmButtonState();
+}
+
+function stopBgm() {
+  bgmEnabled = false;
+  window.clearInterval(bgmTimer);
+  bgmTimer = null;
+  setBgmButtonState();
+}
+
+function toggleBgm() {
+  if (bgmEnabled) stopBgm();
+  else startBgm();
+}
+
+function resumeBgmAfterGesture() {
+  if (!bgmEnabled || !audioContext || audioContext.state !== "suspended") return;
+  audioContext.resume();
 }
 
 function escapeHtml(value) {
@@ -434,6 +452,9 @@ el.resetProgress.addEventListener("click", () => {
   setMode(mode);
 });
 el.bgmToggle.addEventListener("click", toggleBgm);
+document.addEventListener("pointerdown", resumeBgmAfterGesture, { passive: true });
 
 renderShell();
 setMode("quiz");
+setBgmButtonState();
+startBgm();
