@@ -69,8 +69,13 @@ function playBgmStep() {
 }
 
 function setBgmButtonState() {
-  el.bgmToggle.textContent = bgmEnabled ? "BGM オフ" : "BGM オン";
   el.bgmToggle.setAttribute("aria-pressed", String(bgmEnabled));
+  el.bgmToggle.setAttribute("aria-label", bgmEnabled ? "BGMを止める" : "BGMを流す");
+  el.bgmToggle.title = bgmEnabled ? "BGMを止める" : "BGMを流す";
+  el.bgmToggle.innerHTML = `
+    <span class="bgm-icon" aria-hidden="true">♪</span>
+    <span class="bgm-copy">BGM ${bgmEnabled ? "オン" : "オフ"}</span>
+  `;
 }
 
 function startBgm() {
@@ -79,7 +84,7 @@ function startBgm() {
     const AudioEngine = window.AudioContext || window.webkitAudioContext;
     if (!AudioEngine) {
       bgmEnabled = false;
-      el.bgmToggle.textContent = "BGM なし";
+      el.bgmToggle.innerHTML = "<span class=\"bgm-icon\" aria-hidden=\"true\">♪</span><span class=\"bgm-copy\">BGM なし</span>";
       el.bgmToggle.disabled = true;
       return;
     }
@@ -280,6 +285,32 @@ function answerQuestion(value) {
   showAnswerDialog(isCorrect, value);
 }
 
+function renderAnswerProgress(isCorrect) {
+  const pct = Math.round((round.answered / round.total) * 100);
+  const status = isCorrect
+    ? "スターが 1 こ ふえたよ"
+    : "だいじょうぶ。考え方を見て次へ進もう";
+
+  return `
+    <div class="answer-progress ${isCorrect ? "is-correct" : "is-wrong"}" aria-label="今日の進み具合">
+      <div class="progress-celebration">
+        <span class="progress-star" aria-hidden="true">★</span>
+        <div>
+          <strong>${round.answered}/${round.total}</strong>
+          <span>${status}</span>
+        </div>
+      </div>
+      <div class="answer-progress-track">
+        <span style="width:${pct}%"></span>
+      </div>
+      <div class="progress-mini-stats">
+        <span>スター ${progress.stars}</span>
+        <span>れんぞく ${progress.streak}</span>
+      </div>
+    </div>
+  `;
+}
+
 function showAnswerDialog(isCorrect, selectedAnswer) {
   const complete = round.answered >= round.total;
   const title = isCorrect
@@ -299,7 +330,9 @@ function showAnswerDialog(isCorrect, selectedAnswer) {
       <div class="dialog-badge">${isCorrect ? "OK" : "CHECK"}</div>
       <h3>${title}</h3>
       <p class="dialog-lead">${lead}</p>
+      ${renderAnswerProgress(isCorrect)}
       <div class="reason-box">
+        <small>正しい考え方</small>
         <strong>${escapeHtml(currentQuestion.formula)}</strong>
         <span>${escapeHtml(currentQuestion.hint)}</span>
       </div>
