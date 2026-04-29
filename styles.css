@@ -136,6 +136,23 @@ h2 {
   font-weight: 700;
 }
 
+.bgm-button {
+  min-height: 54px;
+  padding: 0 16px;
+  border: 1px solid #b9dacd;
+  border-radius: 8px;
+  background: #e8f7ef;
+  color: var(--mint-dark);
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.bgm-button[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--mint);
+  color: #fff;
+}
+
 .hero-board {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -564,6 +581,10 @@ h2 {
   .quiz-layout,
   .match-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .bgm-button {
+    width: 100%;
   }
 
   .quiz-layout.choice-only {

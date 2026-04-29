@@ -23,8 +23,14 @@ const el = {
   quizMode: document.querySelector("#quizMode"),
   matchMode: document.querySelector("#matchMode"),
   reviewMode: document.querySelector("#reviewMode"),
-  resetProgress: document.querySelector("#resetProgress")
+  resetProgress: document.querySelector("#resetProgress"),
+  bgmToggle: document.querySelector("#bgmToggle")
 };
+
+let audioContext = null;
+let bgmTimer = null;
+let bgmStep = 0;
+let bgmEnabled = false;
 
 function loadProgress() {
   const fallback = { stars: 0, streak: 0, mastered: {}, wrong: [] };
@@ -37,6 +43,51 @@ function loadProgress() {
 
 function saveProgress() {
   localStorage.setItem(storageKey, JSON.stringify(progress));
+}
+
+function playTone(frequency, startTime, duration, gainValue) {
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  gain.gain.setValueAtTime(0.0001, startTime);
+  gain.gain.exponentialRampToValueAtTime(gainValue, startTime + 0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  oscillator.connect(gain).connect(audioContext.destination);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration + 0.03);
+}
+
+function playBgmStep() {
+  if (!audioContext || !bgmEnabled) return;
+  const melody = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46];
+  const bass = [261.63, 329.63, 392, 329.63];
+  const now = audioContext.currentTime;
+  playTone(melody[bgmStep % melody.length], now, 0.24, 0.045);
+  if (bgmStep % 2 === 0) playTone(bass[Math.floor(bgmStep / 2) % bass.length], now, 0.34, 0.028);
+  bgmStep += 1;
+}
+
+function toggleBgm() {
+  bgmEnabled = !bgmEnabled;
+  if (bgmEnabled) {
+    const AudioEngine = window.AudioContext || window.webkitAudioContext;
+    if (!AudioEngine) {
+      bgmEnabled = false;
+      el.bgmToggle.textContent = "BGM なし";
+      el.bgmToggle.disabled = true;
+      return;
+    }
+    audioContext = audioContext || new AudioEngine();
+    audioContext.resume();
+    playBgmStep();
+    bgmTimer = window.setInterval(playBgmStep, 360);
+  } else {
+    window.clearInterval(bgmTimer);
+    bgmTimer = null;
+  }
+  el.bgmToggle.textContent = bgmEnabled ? "BGM オフ" : "BGM オン";
+  el.bgmToggle.setAttribute("aria-pressed", String(bgmEnabled));
 }
 
 function escapeHtml(value) {
@@ -382,6 +433,7 @@ el.resetProgress.addEventListener("click", () => {
   renderShell();
   setMode(mode);
 });
+el.bgmToggle.addEventListener("click", toggleBgm);
 
 renderShell();
 setMode("quiz");
