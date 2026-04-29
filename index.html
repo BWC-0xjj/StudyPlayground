@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="小学生のための単位換算ゲーム" />
+    <title>単位換算トレーニング</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar" aria-label="学習の進みぐあい">
+        <div>
+          <p class="eyebrow"><ruby>小学校<rt>しょうがっこう</rt></ruby>の<ruby>算数<rt>さんすう</rt></ruby></p>
+          <h1><ruby>単位<rt>たんい</rt></ruby><ruby>換算<rt>かんさん</rt></ruby>トレーニング</h1>
+        </div>
+        <div class="stats" aria-live="polite">
+          <div>
+            <span id="streak">0</span>
+            <small><ruby>連続<rt>れんぞく</rt></ruby><ruby>正解<rt>せいかい</rt></ruby></small>
+          </div>
+          <div>
+            <span id="stars">0</span>
+            <small>スター</small>
+          </div>
+          <div>
+            <span id="mastered">0</span>
+            <small><ruby>習得<rt>しゅうとく</rt></ruby></small>
+          </div>
+        </div>
+      </section>
+
+      <section class="hero-board" aria-label="練習エリア">
+        <div class="scene" aria-hidden="true">
+          <svg viewBox="0 0 720 260" role="img">
+            <defs>
+              <linearGradient id="sky" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#d8f1ff" />
+                <stop offset="100%" stop-color="#f7efd5" />
+              </linearGradient>
+            </defs>
+            <rect width="720" height="260" fill="url(#sky)" rx="18" />
+            <path d="M0 206 C90 178 153 201 224 176 C326 142 390 181 478 154 C585 121 641 151 720 126 L720 260 L0 260 Z" fill="#7cc99b" />
+            <path d="M0 226 C116 193 192 224 302 198 C405 174 485 207 570 181 C626 164 673 171 720 153 L720 260 L0 260 Z" fill="#3f9e77" />
+            <g transform="translate(76 58)">
+              <rect x="0" y="38" width="118" height="82" rx="10" fill="#ffffff" opacity=".92" />
+              <path d="M21 38 V18 H96 V38" fill="none" stroke="#2f6f89" stroke-width="8" stroke-linecap="round" />
+              <text x="59" y="88" text-anchor="middle" font-size="34" font-weight="800" fill="#25445b">1 m</text>
+            </g>
+            <g transform="translate(290 80)">
+              <rect width="124" height="74" rx="12" fill="#fff8e8" stroke="#f0b75f" stroke-width="5" />
+              <text x="62" y="48" text-anchor="middle" font-size="30" font-weight="800" fill="#674519">100 cm</text>
+            </g>
+            <g transform="translate(530 55)">
+              <circle cx="55" cy="55" r="49" fill="#fff" opacity=".94" />
+              <path d="M54 19 v39 l26 18" fill="none" stroke="#31506b" stroke-width="8" stroke-linecap="round" />
+              <text x="55" y="124" text-anchor="middle" font-size="24" font-weight="800" fill="#31506b">60分</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="control-strip">
+          <div class="tabs" id="topicTabs" role="tablist" aria-label="テーマを選ぶ"></div>
+          <div class="mode-buttons" aria-label="あそび方を選ぶ">
+            <button id="quizMode" class="mode active" type="button">はやおし</button>
+            <button id="matchMode" class="mode" type="button">ペア</button>
+            <button id="reviewMode" class="mode" type="button"><ruby>復習<rt>ふくしゅう</rt></ruby></button>
+          </div>
+        </div>
+
+        <section id="gameArea" class="game-area" aria-live="polite"></section>
+      </section>
+
+      <section class="progress-band" aria-label="テーマごとの習得度">
+        <div class="section-head">
+          <h2><ruby>練習<rt>れんしゅう</rt></ruby>マップ</h2>
+          <button id="resetProgress" class="ghost-button" type="button" title="このパソコンに保存した進みぐあいを消す">リセット</button>
+        </div>
+        <div id="topicGrid" class="topic-grid"></div>
+      </section>
+    </main>
+
+    <script src="./content/units.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
