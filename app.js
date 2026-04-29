@@ -22,6 +22,7 @@ const el = {
   mastered: document.querySelector("#mastered"),
   quizMode: document.querySelector("#quizMode"),
   matchMode: document.querySelector("#matchMode"),
+  visualMode: document.querySelector("#visualMode"),
   reviewMode: document.querySelector("#reviewMode"),
   resetProgress: document.querySelector("#resetProgress"),
   bgmToggle: document.querySelector("#bgmToggle")
@@ -31,6 +32,10 @@ let audioContext = null;
 let bgmTimer = null;
 let bgmStep = 0;
 let bgmEnabled = true;
+let bgmAudio = null;
+let bgmAudioEventsReady = false;
+let lastTrackIndex = -1;
+let bgmTracks = Array.isArray(window.BGM_TRACKS) ? [...window.BGM_TRACKS] : [];
 
 function loadProgress() {
   const fallback = { stars: 0, streak: 0, mastered: {}, wrong: [] };
@@ -43,6 +48,19 @@ function loadProgress() {
 
 function saveProgress() {
   localStorage.setItem(storageKey, JSON.stringify(progress));
+}
+
+async function loadLocalBgmTracks() {
+  try {
+    const response = await fetch("./assets/audio/bgm/local-tracks.json", { cache: "no-store" });
+    if (!response.ok) return;
+    const tracks = await response.json();
+    if (Array.isArray(tracks)) {
+      bgmTracks = [...new Set([...bgmTracks, ...tracks.filter((track) => typeof track === "string")])];
+    }
+  } catch {
+    // Local-only music manifests are optional.
+  }
 }
 
 function playTone(frequency, startTime, duration, gainValue) {
@@ -68,6 +86,37 @@ function playBgmStep() {
   bgmStep += 1;
 }
 
+function pickBgmTrack() {
+  if (!bgmTracks.length) return "";
+  if (bgmTracks.length === 1) {
+    lastTrackIndex = 0;
+    return bgmTracks[0];
+  }
+
+  let nextIndex = Math.floor(Math.random() * bgmTracks.length);
+  while (nextIndex === lastTrackIndex) {
+    nextIndex = Math.floor(Math.random() * bgmTracks.length);
+  }
+  lastTrackIndex = nextIndex;
+  return bgmTracks[nextIndex];
+}
+
+function playRandomBgmTrack() {
+  if (!bgmEnabled || !bgmTracks.length) return;
+  const src = pickBgmTrack();
+  if (!src) return;
+
+  bgmAudio = bgmAudio || new Audio();
+  if (!bgmAudioEventsReady) {
+    bgmAudio.addEventListener("ended", playRandomBgmTrack);
+    bgmAudioEventsReady = true;
+  }
+  bgmAudio.src = src;
+  bgmAudio.volume = 0.38;
+  bgmAudio.loop = false;
+  bgmAudio.play().catch(() => {});
+}
+
 function setBgmButtonState() {
   el.bgmToggle.setAttribute("aria-pressed", String(bgmEnabled));
   el.bgmToggle.setAttribute("aria-label", bgmEnabled ? "BGMを止める" : "BGMを流す");
@@ -80,6 +129,13 @@ function setBgmButtonState() {
 
 function startBgm() {
   bgmEnabled = true;
+
+  if (bgmTracks.length) {
+    playRandomBgmTrack();
+    setBgmButtonState();
+    return;
+  }
+
   if (bgmEnabled) {
     const AudioEngine = window.AudioContext || window.webkitAudioContext;
     if (!AudioEngine) {
@@ -98,6 +154,10 @@ function startBgm() {
 
 function stopBgm() {
   bgmEnabled = false;
+  if (bgmAudio) {
+    bgmAudio.pause();
+    bgmAudio.currentTime = 0;
+  }
   window.clearInterval(bgmTimer);
   bgmTimer = null;
   setBgmButtonState();
@@ -109,6 +169,10 @@ function toggleBgm() {
 }
 
 function resumeBgmAfterGesture() {
+  if (bgmEnabled && bgmTracks.length && bgmAudio && bgmAudio.paused) {
+    bgmAudio.play().catch(() => {});
+    return;
+  }
   if (!bgmEnabled || !audioContext || audioContext.state !== "suspended") return;
   audioContext.resume();
 }
@@ -119,6 +183,10 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function renderUnitText(value) {
+  return escapeHtml(value).replace(/時間/g, "<ruby>時間<rt>じかん</rt></ruby>");
 }
 
 function topicTitle(topic) {
@@ -167,6 +235,8 @@ function renderShell() {
   el.streak.textContent = progress.streak;
   el.stars.textContent = progress.stars;
   el.mastered.textContent = Object.values(progress.mastered).filter((value) => value >= 3).length;
+  const reviewCount = progress.wrong.length;
+  el.reviewMode.innerHTML = `<ruby>復習<rt>ふくしゅう</rt></ruby>${reviewCount ? `<span class="review-count">${reviewCount}</span>` : ""}`;
 }
 
 function makeQuestion(topicId = activeTopicId, reviewOnly = false) {
@@ -232,13 +302,140 @@ function renderQuiz(reviewOnly = false) {
         <div class="topic-label" style="background:${currentQuestion.topic.color}22;color:${currentQuestion.topic.color}">
           ${topicTitle(currentQuestion.topic)}
         </div>
-        <div class="question-text">${escapeHtml(currentQuestion.prompt)}</div>
+        <div class="question-text">${renderUnitText(currentQuestion.prompt)}</div>
         ${renderRoundProgress(currentQuestion.topic)}
       </div>
       <div class="feedback-panel choice-panel">
         <div class="big-result"><ruby>答<rt>こた</rt></ruby>えを<ruby>選<rt>えら</rt></ruby>んでね。</div>
         <div class="choices">
-          ${currentQuestion.choices.map((choice) => `<button class="answer-button" data-answer="${escapeHtml(choice)}" type="button">${escapeHtml(choice)}</button>`).join("")}
+          ${currentQuestion.choices.map((choice) => `<button class="answer-button" data-answer="${escapeHtml(choice)}" type="button">${renderUnitText(choice)}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function visualScene(question) {
+  const topicId = question.topic.id;
+  const color = question.topic.color;
+  const factText = question.fact.join(" ");
+  let title = "絵で考えよう";
+  let subtitle = "答えは絵の中にはかかないよ";
+  let drawing = "";
+
+  if (topicId === "length") {
+    if (factText.includes("km")) {
+      title = "遠い道の長さ";
+      subtitle = "キロメートルは長い道で考える";
+      drawing = `<path d="M0 240c74-44 134-52 202-24s121 23 192-26 121-64 186-46v176H0z" fill="${color}" opacity=".22"/><path d="M58 280c112-92 206-55 286-102 55-32 100-50 168-36" fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round"/><path d="M58 280c112-92 206-55 286-102 55-32 100-50 168-36" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="16 16"/><path d="M92 118l42-48 42 48zM388 94l54-62 54 62z" fill="${color}" opacity=".55"/>`;
+    } else if (factText.includes("mm")) {
+      title = "とても短い長さ";
+      subtitle = "ミリメートルは小さいめもりで見る";
+      drawing = `<rect x="72" y="168" width="430" height="44" rx="10" fill="#fff" stroke="${color}" stroke-width="5"/><path d="M102 168v44M132 168v24M162 168v44M192 168v24M222 168v44M252 168v24M282 168v44M312 168v24M342 168v44M372 168v24M402 168v44M432 168v24M462 168v44" stroke="${color}" stroke-width="4"/><path d="M116 126h260l52 28-52 28H116z" fill="#fff8e8" stroke="#f2b84b" stroke-width="5"/>`;
+    } else {
+      title = "身近な長さ";
+      subtitle = "メートルとセンチメートルをくらべる";
+      drawing = `<rect x="110" y="94" width="118" height="174" rx="14" fill="#fff" stroke="${color}" stroke-width="6"/><circle cx="198" cy="176" r="5" fill="${color}"/><rect x="302" y="110" width="44" height="156" rx="8" fill="#fff" stroke="#f2b84b" stroke-width="5"/><path d="M302 132h44M302 154h30M302 176h44M302 198h30M302 220h44M302 242h30" stroke="#f2b84b" stroke-width="4"/>`;
+    }
+  } else if (topicId === "weight") {
+    if (factText.includes("t")) {
+      title = "とても重いもの";
+      subtitle = "トンは車や大きな荷物で考える";
+      drawing = `<rect x="96" y="148" width="248" height="82" rx="10" fill="#fff" stroke="${color}" stroke-width="6"/><rect x="344" y="176" width="94" height="54" rx="8" fill="#fff" stroke="${color}" stroke-width="6"/><circle cx="162" cy="244" r="25" fill="${color}"/><circle cx="386" cy="244" r="25" fill="${color}"/><path d="M128 126h164v42H128z" fill="#f7fbfc" stroke="#f2b84b" stroke-width="5"/>`;
+    } else if (factText.includes("mg")) {
+      title = "小さな重さ";
+      subtitle = "ミリグラムは少しの粉や薬で考える";
+      drawing = `<path d="M290 102v98" stroke="${color}" stroke-width="8" stroke-linecap="round"/><path d="M170 142h240" stroke="${color}" stroke-width="8" stroke-linecap="round"/><path d="M210 142l-54 80h108zM370 142l-54 80h108z" fill="#fff" stroke="${color}" stroke-width="5"/><circle cx="208" cy="186" r="10" fill="#f2b84b"/><circle cx="232" cy="198" r="7" fill="#f2b84b"/><circle cx="346" cy="194" r="5" fill="#f2b84b"/>`;
+    } else {
+      title = "はかりで重さを見る";
+      subtitle = "キログラムとグラムをくらべる";
+      drawing = `<rect x="160" y="180" width="260" height="80" rx="18" fill="#fff" stroke="${color}" stroke-width="6"/><circle cx="290" cy="178" r="70" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M290 178l42-28" stroke="#31506b" stroke-width="8" stroke-linecap="round"/><path d="M206 116h82v50h-82zM318 126h58v40h-58z" fill="#fff8e8" stroke="#f2b84b" stroke-width="5"/>`;
+    }
+  } else if (topicId === "time") {
+    if (factText.includes("日")) {
+      title = "日の流れ";
+      subtitle = "日と時間は朝から夜までで考える";
+      drawing = `<circle cx="150" cy="150" r="54" fill="#f2b84b"/><path d="M402 108a58 58 0 1 0 52 96 72 72 0 1 1-52-96z" fill="${color}" opacity=".72"/><rect x="220" y="118" width="112" height="118" rx="12" fill="#fff" stroke="${color}" stroke-width="5"/><path d="M220 154h112M248 118v-24M304 118v-24" stroke="${color}" stroke-width="5" stroke-linecap="round"/>`;
+    } else if (factText.includes("時間")) {
+      title = "時計で考える";
+      subtitle = "時間は時計の大きなまとまり";
+      drawing = `<circle cx="290" cy="170" r="86" fill="#fff" stroke="${color}" stroke-width="8"/><path d="M290 112v62l48 34" fill="none" stroke="#31506b" stroke-width="9" stroke-linecap="round"/><path d="M290 74v28M290 238v28M194 170h28M358 170h28" stroke="#f2b84b" stroke-width="7" stroke-linecap="round"/>`;
+    } else {
+      title = "短い時間をはかる";
+      subtitle = "分と秒はストップウォッチで考える";
+      drawing = `<circle cx="290" cy="178" r="82" fill="#fff" stroke="${color}" stroke-width="8"/><rect x="258" y="68" width="64" height="32" rx="8" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M290 178v-52M290 178l38 32" stroke="#31506b" stroke-width="9" stroke-linecap="round"/><path d="M178 178h28M374 178h28M290 66v34" stroke="#f2b84b" stroke-width="7" stroke-linecap="round"/>`;
+    }
+  } else if (topicId === "capacity") {
+    if (factText.includes("kL")) {
+      title = "大きな水の入れもの";
+      subtitle = "キロリットルは大きなタンクで考える";
+      drawing = `<ellipse cx="290" cy="110" rx="128" ry="38" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M162 110v128c0 22 58 40 128 40s128-18 128-40V110" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M176 188c54 30 174 30 228 0v52c-46 32-184 32-228 0z" fill="${color}" opacity=".22"/>`;
+    } else if (factText.includes("mL")) {
+      title = "細かくはかる";
+      subtitle = "ミリリットルはめもりで考える";
+      drawing = `<path d="M210 88h160l-22 184H232z" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M236 224h108v46H242z" fill="${color}" opacity=".24"/><path d="M248 124h76M248 154h54M248 184h76M248 214h54" stroke="#f2b84b" stroke-width="5" stroke-linecap="round"/>`;
+    } else {
+      title = "飲みもののかさ";
+      subtitle = "リットルとデシリットルをくらべる";
+      drawing = `<path d="M152 102h98l-10 166h-78z" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M330 136h86v118a43 43 0 0 1-86 0z" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M416 168h38v56h-38" fill="none" stroke="${color}" stroke-width="6"/><path d="M162 206h78v62h-78zM336 214h74v58h-74z" fill="${color}" opacity=".22"/>`;
+    }
+  } else if (topicId === "area") {
+    if (factText.includes("ha") || factText.includes("km²") || factText.includes("a")) {
+      title = "広い土地の面積";
+      subtitle = "畑や公園の広さで考える";
+      drawing = `<path d="M62 246l170-118 292 86-176 76z" fill="${color}" opacity=".25" stroke="${color}" stroke-width="5"/><path d="M140 226l168-66M222 264l170-76M232 128l116 160M328 158l116 96" stroke="#fff" stroke-width="5"/><path d="M96 118h78v70H96zM404 92h88v78h-88z" fill="#fff8e8" stroke="#f2b84b" stroke-width="5"/>`;
+    } else {
+      title = "正方形で広さを見る";
+      subtitle = "小さいますをしきつめて考える";
+      drawing = `<rect x="150" y="96" width="280" height="180" rx="8" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M206 96v180M262 96v180M318 96v180M374 96v180M150 141h280M150 186h280M150 231h280" stroke="${color}" stroke-width="4" opacity=".55"/>`;
+    }
+  } else if (topicId === "volume") {
+    title = "箱の中の大きさ";
+    subtitle = "小さい立方体をつめて考える";
+    drawing = `<path d="M190 142l100-58 100 58-100 58z" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M190 142v92l100 58 100-58v-92" fill="none" stroke="${color}" stroke-width="6"/><path d="M290 200v92M232 166l100-58M252 178l100-58M212 154l100-58M230 256l100-58M270 280l100-58" stroke="${color}" stroke-width="4" opacity=".52"/><path d="M190 190l100 58 100-58" stroke="#f2b84b" stroke-width="5" opacity=".75"/>`;
+  } else {
+    drawing = `<circle cx="290" cy="176" r="86" fill="#fff" stroke="${color}" stroke-width="7"/><path d="M224 176h132" stroke="#f2b84b" stroke-width="10" stroke-linecap="round"/><path d="M356 176l-24-18v36z" fill="#f2b84b"/>`;
+  }
+
+  const titleText = escapeHtml(title);
+  const subtitleText = escapeHtml(subtitle);
+
+  return `
+    <div class="unit-picture" style="--picture-color:${color}">
+      <svg viewBox="0 0 580 320" role="img" aria-label="${titleText}">
+        <rect x="0" y="0" width="580" height="320" rx="18" fill="#f7fbfc"/>
+        <circle cx="64" cy="56" r="48" fill="${color}" opacity=".14"/>
+        <circle cx="522" cy="268" r="64" fill="#f2b84b" opacity=".14"/>
+        <text x="34" y="48" font-size="23" font-weight="900" fill="#21303d">${titleText}</text>
+        <text x="34" y="78" font-size="16" font-weight="800" fill="#627182">${subtitleText}</text>
+        ${drawing}
+      </svg>
+    </div>
+  `;
+}
+
+function renderVisualQuiz() {
+  currentQuestion = makeQuestion(activeTopicId, false);
+  acceptingAnswer = true;
+
+  if (!currentQuestion) {
+    el.gameArea.innerHTML = "<div class=\"empty-state\"><div>絵で見る問題がありません。</div></div>";
+    return;
+  }
+
+  el.gameArea.innerHTML = `
+    <div class="visual-layout">
+      <div class="visual-panel">
+        <div class="topic-label" style="background:${currentQuestion.topic.color}22;color:${currentQuestion.topic.color}">
+          ${topicTitle(currentQuestion.topic)}
+        </div>
+        ${visualScene(currentQuestion)}
+        ${renderRoundProgress(currentQuestion.topic)}
+      </div>
+      <div class="feedback-panel choice-panel">
+        <div class="big-result">${renderUnitText(currentQuestion.prompt)}</div>
+        <div class="choices">
+          ${currentQuestion.choices.map((choice) => `<button class="answer-button" data-answer="${escapeHtml(choice)}" type="button">${renderUnitText(choice)}</button>`).join("")}
         </div>
       </div>
     </div>
@@ -318,7 +515,7 @@ function showAnswerDialog(isCorrect, selectedAnswer) {
     : "ここで<ruby>確認<rt>かくにん</rt></ruby>しよう";
   const lead = isCorrect
     ? "よくできました。どうしてそうなるかも見ておこう。"
-    : `えらんだ答えは ${escapeHtml(selectedAnswer)}。正しい答えは ${escapeHtml(currentQuestion.answer)} です。`;
+    : `えらんだ答えは ${renderUnitText(selectedAnswer)}。正しい答えは ${renderUnitText(currentQuestion.answer)} です。`;
   const completeText = complete
     ? "<div class=\"round-complete\">10問チャレンジ達成！ 次はまた 1問目から始まるよ。</div>"
     : "";
@@ -333,8 +530,8 @@ function showAnswerDialog(isCorrect, selectedAnswer) {
       ${renderAnswerProgress(isCorrect)}
       <div class="reason-box">
         <small>正しい考え方</small>
-        <strong>${escapeHtml(currentQuestion.formula)}</strong>
-        <span>${escapeHtml(currentQuestion.hint)}</span>
+        <strong>${renderUnitText(currentQuestion.formula)}</strong>
+        <span>${renderUnitText(currentQuestion.hint)}</span>
       </div>
       ${completeText}
       <button class="primary-button next-question" type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
@@ -348,7 +545,8 @@ function closeAnswerDialog() {
   const dialog = document.querySelector(".answer-dialog-backdrop");
   if (dialog) dialog.remove();
   if (round.answered >= round.total) round.answered = 0;
-  renderQuiz(mode === "review");
+  if (mode === "visual") renderVisualQuiz();
+  else renderQuiz(mode === "review");
 }
 
 function renderMatch() {
@@ -381,7 +579,7 @@ function renderMatchBoard(message = "<ruby>同<rt>おな</rt></ruby>じ<ruby>意
           const matched = pair && pair.matched;
           return `
           <button class="match-card${matched ? " matched" : ""}" data-card="${escapeHtml(card.id)}" data-pair="${escapeHtml(card.pairId)}" type="button" ${matched ? "disabled" : ""}>
-            ${escapeHtml(card.text)}
+            ${renderUnitText(card.text)}
           </button>
         `;
         }).join("")}
@@ -413,7 +611,7 @@ function handleMatch(card) {
     renderShell();
     selectedMatch = null;
     const done = matchPairs.every((item) => item.matched);
-    renderMatchBoard(done ? "<ruby>全部<rt>ぜんぶ</rt></ruby>ペアになったよ！" : escapeHtml(pair.hint));
+    renderMatchBoard(done ? "<ruby>全部<rt>ぜんぶ</rt></ruby>ペアになったよ！" : renderUnitText(pair.hint));
     if (done) setTimeout(renderMatch, 1300);
   } else {
     progress.streak = 0;
@@ -431,9 +629,11 @@ function setMode(nextMode) {
   mode = nextMode;
   el.quizMode.classList.toggle("active", mode === "quiz");
   el.matchMode.classList.toggle("active", mode === "match");
+  el.visualMode.classList.toggle("active", mode === "visual");
   el.reviewMode.classList.toggle("active", mode === "review");
 
   if (mode === "match") renderMatch();
+  else if (mode === "visual") renderVisualQuiz();
   else renderQuiz(mode === "review");
 }
 
@@ -476,6 +676,7 @@ document.body.addEventListener("keydown", (event) => {
 
 el.quizMode.addEventListener("click", () => setMode("quiz"));
 el.matchMode.addEventListener("click", () => setMode("match"));
+el.visualMode.addEventListener("click", () => setMode("visual"));
 el.reviewMode.addEventListener("click", () => setMode("review"));
 el.resetProgress.addEventListener("click", () => {
   progress = { stars: 0, streak: 0, mastered: {}, wrong: [] };
@@ -489,5 +690,7 @@ document.addEventListener("pointerdown", resumeBgmAfterGesture, { passive: true 
 
 renderShell();
 setMode("quiz");
-setBgmButtonState();
-startBgm();
+loadLocalBgmTracks().finally(() => {
+  setBgmButtonState();
+  startBgm();
+});

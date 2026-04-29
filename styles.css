@@ -248,6 +248,20 @@ h2 {
   color: #fff;
 }
 
+.review-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: 7px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+}
+
 .game-area {
   min-height: 360px;
   padding: clamp(18px, 3vw, 34px);
@@ -267,12 +281,21 @@ h2 {
   grid-template-columns: minmax(280px, .95fr) minmax(320px, 1.05fr);
 }
 
+.visual-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 1.1fr) minmax(300px, .9fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
 .question-panel,
-.feedback-panel {
+.feedback-panel,
+.visual-panel {
   min-height: 300px;
 }
 
-.question-panel {
+.question-panel,
+.visual-panel {
   display: grid;
   align-content: center;
   gap: 18px;
@@ -356,6 +379,20 @@ h2 {
   color: var(--muted);
   font-size: 18px;
   line-height: 1.55;
+}
+
+.unit-picture {
+  overflow: hidden;
+  border: 1px solid #dfe8ed;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(35, 48, 61, .08);
+}
+
+.unit-picture svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .match-layout {
@@ -696,6 +733,7 @@ h2 {
   .stats,
   .topic-grid,
   .quiz-layout,
+  .visual-layout,
   .match-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -708,7 +746,12 @@ h2 {
     grid-template-columns: 1fr;
   }
 
-  .quiz-layout {
+  .visual-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-layout,
+  .visual-layout {
     gap: 12px;
   }
 
@@ -726,6 +769,7 @@ h2 {
   .stats,
   .topic-grid,
   .quiz-layout,
+  .visual-layout,
   .match-grid,
   .choices {
     grid-template-columns: 1fr;
@@ -745,7 +789,8 @@ h2 {
   }
 
   .question-panel,
-  .feedback-panel {
+  .feedback-panel,
+  .visual-panel {
     min-height: auto;
   }
 
