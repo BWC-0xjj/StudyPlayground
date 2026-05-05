@@ -12,6 +12,9 @@ let selectedMatch = null;
 let matchPairs = [];
 let matchCards = [];
 let round = { answered: 0, total: 10 };
+let dailyQuestion = null;
+let dailyOperation = "multiply";
+let dailySettings = { multiplyDigits: "2x2", divisorDigits: 1 };
 
 const el = {
   topicTabs: document.querySelector("#topicTabs"),
@@ -23,6 +26,7 @@ const el = {
   quizMode: document.querySelector("#quizMode"),
   matchMode: document.querySelector("#matchMode"),
   visualMode: document.querySelector("#visualMode"),
+  dailyMode: document.querySelector("#dailyMode"),
   reviewMode: document.querySelector("#reviewMode"),
   resetProgress: document.querySelector("#resetProgress"),
   bgmToggle: document.querySelector("#bgmToggle")
@@ -38,9 +42,10 @@ let lastTrackIndex = -1;
 let bgmTracks = Array.isArray(window.BGM_TRACKS) ? [...window.BGM_TRACKS] : [];
 
 function loadProgress() {
-  const fallback = { stars: 0, streak: 0, mastered: {}, wrong: [] };
+  const fallback = { stars: 0, streak: 0, mastered: {}, wrong: [], daily: {} };
   try {
-    return { ...fallback, ...JSON.parse(localStorage.getItem(storageKey) || "{}") };
+    const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    return { ...fallback, ...stored, daily: stored.daily || fallback.daily };
   } catch {
     return fallback;
   }
@@ -189,6 +194,21 @@ function renderUnitText(value) {
   return escapeHtml(value).replace(/時間/g, "<ruby>時間<rt>じかん</rt></ruby>");
 }
 
+function todayKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function todayDailyProgress() {
+  const key = todayKey();
+  progress.daily = progress.daily || {};
+  progress.daily[key] = progress.daily[key] || { multiply: false, divide: false };
+  return progress.daily[key];
+}
+
 function topicTitle(topic) {
   return topic.nameHtml || escapeHtml(topic.name);
 }
@@ -237,6 +257,9 @@ function renderShell() {
   el.mastered.textContent = Object.values(progress.mastered).filter((value) => value >= 3).length;
   const reviewCount = progress.wrong.length;
   el.reviewMode.innerHTML = `<ruby>復習<rt>ふくしゅう</rt></ruby>${reviewCount ? `<span class="review-count">${reviewCount}</span>` : ""}`;
+  const dailyDone = todayDailyProgress();
+  const dailyCount = Number(dailyDone.multiply) + Number(dailyDone.divide);
+  el.dailyMode.innerHTML = `<ruby>毎日<rt>まいにち</rt></ruby>${dailyCount ? `<span class="daily-count">${dailyCount}/2</span>` : ""}`;
 }
 
 function makeQuestion(topicId = activeTopicId, reviewOnly = false) {
@@ -442,6 +465,130 @@ function renderVisualQuiz() {
   `;
 }
 
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function numberByDigits(digits) {
+  if (digits === 3) return randomInt(100, 999);
+  return randomInt(10, 99);
+}
+
+function choiceNumbers(answer) {
+  const options = new Set([answer]);
+  const spread = Math.max(6, Math.round(Math.abs(answer) * 0.12));
+  while (options.size < 4) {
+    const offset = randomInt(-spread, spread);
+    const candidate = answer + offset || answer + randomInt(2, 9);
+    if (candidate > 0 && candidate !== answer) options.add(candidate);
+  }
+  return shuffle([...options]).map(String);
+}
+
+function makeDailyQuestion(operation = dailyOperation) {
+  if (operation === "divide") {
+    const divisorDigits = Number(dailySettings.divisorDigits) === 2 ? 2 : 1;
+    let divisor = divisorDigits === 2 ? randomInt(10, 99) : randomInt(2, 9);
+    let answer = randomInt(2, 99);
+    let dividend = divisor * answer;
+    while (dividend < 10 || dividend > 999) {
+      divisor = divisorDigits === 2 ? randomInt(10, 99) : randomInt(2, 9);
+      answer = randomInt(2, 99);
+      dividend = divisor * answer;
+    }
+    return {
+      operation,
+      prompt: `${dividend} ÷ ${divisor} = ?`,
+      answer: String(answer),
+      choices: choiceNumbers(answer),
+      formula: `${dividend} ÷ ${divisor} = ${answer}`,
+      hint: `${divisor} × ${answer} = ${dividend} になるから、答えは ${answer} です。`
+    };
+  }
+
+  const [leftDigits, rightDigits] = dailySettings.multiplyDigits === "3x2" ? [3, 2] : [2, 2];
+  const left = numberByDigits(leftDigits);
+  const right = numberByDigits(rightDigits);
+  const answer = left * right;
+  return {
+    operation,
+    prompt: `${left} × ${right} = ?`,
+    answer: String(answer),
+    choices: choiceNumbers(answer),
+    formula: `${left} × ${right} = ${answer}`,
+    hint: `${left} を ${right} こ分あわせると ${answer} です。くらいをそろえて計算しよう。`
+  };
+}
+
+function operationLabel(operation) {
+  return operation === "divide" ? "わり算" : "かけ算";
+}
+
+function renderDailyChallenge(operation = dailyOperation) {
+  dailyOperation = operation;
+  acceptingAnswer = true;
+  const done = todayDailyProgress();
+  const allDone = done.multiply && done.divide;
+
+  if (allDone) {
+    dailyQuestion = null;
+    el.gameArea.innerHTML = `
+      <div class="daily-complete-panel">
+        <div class="finish-sparkles" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <p class="eyebrow"><ruby>今日<rt>きょう</rt></ruby>のチャレンジ</p>
+        <h2><ruby>全部<rt>ぜんぶ</rt></ruby>できたよ！</h2>
+        <p>かけ算もわり算もクリア。すばらしい集中力です。</p>
+      </div>
+    `;
+    return;
+  }
+
+  dailyQuestion = makeDailyQuestion(dailyOperation);
+  const currentDone = done[dailyOperation];
+  const operationButton = (op, label) => `
+    <button class="daily-choice${dailyOperation === op ? " active" : ""}${done[op] ? " done" : ""}" data-daily-op="${op}" type="button">
+      <span>${label}</span>
+      ${done[op] ? "<small>OK</small>" : ""}
+    </button>
+  `;
+  const settingButton = (name, value, label) => `
+    <button class="daily-choice${String(dailySettings[name]) === String(value) ? " active" : ""}" data-daily-setting="${name}" data-daily-value="${value}" type="button">${label}</button>
+  `;
+
+  el.gameArea.innerHTML = `
+    <div class="daily-layout">
+      <section class="daily-panel">
+        <div class="topic-label"><ruby>毎日<rt>まいにち</rt></ruby>チャレンジ</div>
+        <h2>${operationLabel(dailyOperation)}</h2>
+        <div class="daily-toolbar">
+          <div class="daily-control">
+            <span>今日の問題</span>
+            <div class="daily-segment">
+              ${operationButton("multiply", "かけ算")}
+              ${operationButton("divide", "わり算")}
+            </div>
+          </div>
+          <div class="daily-control">
+            <span>${dailyOperation === "divide" ? "わる数" : "かける数"}</span>
+            <div class="daily-segment">
+              ${dailyOperation === "divide"
+                ? `${settingButton("divisorDigits", 1, "1けた")}${settingButton("divisorDigits", 2, "2けた")}`
+                : `${settingButton("multiplyDigits", "2x2", "2けた × 2けた")}${settingButton("multiplyDigits", "3x2", "3けた × 2けた")}`}
+            </div>
+          </div>
+        </div>
+        <p class="daily-note">${currentDone ? "これはもうクリア済み。もう一度練習してもOK。" : "正解したら今日のこの問題はクリアです。"}</p>
+      </section>
+      <section class="feedback-panel choice-panel">
+        <div class="big-result">${escapeHtml(dailyQuestion.prompt)}</div>
+        <div class="choices">
+          ${dailyQuestion.choices.map((choice) => `<button class="answer-button" data-daily-answer="${escapeHtml(choice)}" type="button">${escapeHtml(choice)}</button>`).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function normalizeAnswer(value) {
   return String(value)
     .replace(/\s+/g, "")
@@ -479,7 +626,30 @@ function answerQuestion(value) {
 
   saveProgress();
   renderShell();
+  refreshVisibleRoundProgress();
   showAnswerDialog(isCorrect, value);
+}
+
+function refreshVisibleRoundProgress() {
+  if (!currentQuestion) return;
+  const progressStack = el.gameArea.querySelector(".progress-stack");
+  if (progressStack) progressStack.outerHTML = renderRoundProgress(currentQuestion.topic);
+}
+
+function uniqueMatchFacts(topic) {
+  const usedCardText = new Set();
+  const facts = [];
+
+  shuffle(topic.facts).forEach((fact) => {
+    const left = normalizeAnswer(fact[0]);
+    const right = normalizeAnswer(fact[1]);
+    if (usedCardText.has(left) || usedCardText.has(right)) return;
+    usedCardText.add(left);
+    usedCardText.add(right);
+    facts.push(fact);
+  });
+
+  return facts;
 }
 
 function renderAnswerProgress(isCorrect) {
@@ -508,6 +678,22 @@ function renderAnswerProgress(isCorrect) {
   `;
 }
 
+function celebrationMascot() {
+  return `
+    <div class="celebration-mascot" aria-hidden="true">
+      <span class="mascot-ear left"></span>
+      <span class="mascot-ear right"></span>
+      <span class="mascot-face">
+        <span class="mascot-eye left"></span>
+        <span class="mascot-eye right"></span>
+        <span class="mascot-mouth"></span>
+      </span>
+      <span class="mascot-arm left"></span>
+      <span class="mascot-arm right"></span>
+    </div>
+  `;
+}
+
 function showAnswerDialog(isCorrect, selectedAnswer) {
   const complete = round.answered >= round.total;
   const title = isCorrect
@@ -517,7 +703,14 @@ function showAnswerDialog(isCorrect, selectedAnswer) {
     ? "よくできました。どうしてそうなるかも見ておこう。"
     : `えらんだ答えは ${renderUnitText(selectedAnswer)}。正しい答えは ${renderUnitText(currentQuestion.answer)} です。`;
   const completeText = complete
-    ? "<div class=\"round-complete\">10問チャレンジ達成！ 次はまた 1問目から始まるよ。</div>"
+    ? `
+      <div class="round-complete celebration-card">
+        <div class="finish-sparkles" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        ${celebrationMascot()}
+        <strong>10問チャレンジ達成！</strong>
+        <span>最後までよくがんばりました。次はまた 1問目から始まるよ。</span>
+      </div>
+    `
     : "";
 
   const dialog = document.createElement("div");
@@ -544,14 +737,86 @@ function showAnswerDialog(isCorrect, selectedAnswer) {
 function closeAnswerDialog() {
   const dialog = document.querySelector(".answer-dialog-backdrop");
   if (dialog) dialog.remove();
+  if (mode === "daily") {
+    const done = todayDailyProgress();
+    if (done.multiply && !done.divide) dailyOperation = "divide";
+    if (!done.multiply && done.divide) dailyOperation = "multiply";
+    renderDailyChallenge(dailyOperation);
+    return;
+  }
   if (round.answered >= round.total) round.answered = 0;
   if (mode === "visual") renderVisualQuiz();
   else renderQuiz(mode === "review");
 }
 
+function answerDailyQuestion(value) {
+  if (!dailyQuestion || !acceptingAnswer) return;
+  acceptingAnswer = false;
+
+  const isCorrect = String(value) === dailyQuestion.answer;
+  const buttons = document.querySelectorAll("[data-daily-answer]");
+  buttons.forEach((button) => {
+    if (button.dataset.dailyAnswer === dailyQuestion.answer) button.classList.add("correct");
+    if (button.dataset.dailyAnswer === value && !isCorrect) button.classList.add("wrong");
+    button.disabled = true;
+  });
+
+  if (isCorrect) {
+    progress.streak += 1;
+    progress.stars += 2;
+    todayDailyProgress()[dailyQuestion.operation] = true;
+  } else {
+    progress.streak = 0;
+  }
+
+  saveProgress();
+  renderShell();
+  showDailyDialog(isCorrect, value);
+}
+
+function showDailyDialog(isCorrect, selectedAnswer) {
+  const done = todayDailyProgress();
+  const allDone = done.multiply && done.divide;
+  const title = isCorrect
+    ? "<ruby>正解<rt>せいかい</rt></ruby>！"
+    : "もう<ruby>一度<rt>いちど</rt></ruby>ためそう";
+  const lead = isCorrect
+    ? `${operationLabel(dailyQuestion.operation)}クリア。今日の力がついています。`
+    : `えらんだ答えは ${escapeHtml(selectedAnswer)}。正しい答えは ${escapeHtml(dailyQuestion.answer)} です。`;
+  const completeText = allDone
+    ? `
+      <div class="round-complete celebration-card">
+        <div class="finish-sparkles" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        ${celebrationMascot()}
+        <strong>今日の毎日チャレンジ達成！</strong>
+        <span>かけ算もわり算もクリア。よくできました。</span>
+      </div>
+    `
+    : "";
+
+  const dialog = document.createElement("div");
+  dialog.className = "answer-dialog-backdrop";
+  dialog.innerHTML = `
+    <section class="answer-dialog ${isCorrect ? "is-correct" : "is-wrong"}" role="dialog" aria-modal="true" aria-label="答えの説明">
+      <div class="dialog-badge">${isCorrect ? "OK" : "CHECK"}</div>
+      <h3>${title}</h3>
+      <p class="dialog-lead">${lead}</p>
+      <div class="reason-box">
+        <small>正しい考え方</small>
+        <strong>${escapeHtml(dailyQuestion.formula)}</strong>
+        <span>${escapeHtml(dailyQuestion.hint)}</span>
+      </div>
+      ${completeText}
+      <button class="primary-button next-question" data-daily-next="${isCorrect ? "done" : "retry"}" type="button">${isCorrect ? "つぎへ" : "もう一問"}</button>
+    </section>
+  `;
+  document.body.appendChild(dialog);
+  dialog.querySelector(".next-question").focus();
+}
+
 function renderMatch() {
   const topic = topicById(activeTopicId);
-  matchPairs = shuffle(topic.facts).slice(0, 4).map((fact, index) => ({
+  matchPairs = uniqueMatchFacts(topic).slice(0, 4).map((fact, index) => ({
     id: `${topic.id}-${index}`,
     left: fact[0],
     right: fact[1],
@@ -630,10 +895,12 @@ function setMode(nextMode) {
   el.quizMode.classList.toggle("active", mode === "quiz");
   el.matchMode.classList.toggle("active", mode === "match");
   el.visualMode.classList.toggle("active", mode === "visual");
+  el.dailyMode.classList.toggle("active", mode === "daily");
   el.reviewMode.classList.toggle("active", mode === "review");
 
   if (mode === "match") renderMatch();
   else if (mode === "visual") renderVisualQuiz();
+  else if (mode === "daily") renderDailyChallenge(dailyOperation);
   else renderQuiz(mode === "review");
 }
 
@@ -643,7 +910,7 @@ el.topicTabs.addEventListener("click", (event) => {
   activeTopicId = button.dataset.topic;
   round.answered = 0;
   renderShell();
-  setMode(mode);
+  setMode(mode === "daily" ? "quiz" : mode);
 });
 
 el.topicGrid.addEventListener("click", (event) => {
@@ -652,13 +919,27 @@ el.topicGrid.addEventListener("click", (event) => {
   activeTopicId = button.dataset.topic;
   round.answered = 0;
   renderShell();
-  setMode(mode);
+  setMode(mode === "daily" ? "quiz" : mode);
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
 el.gameArea.addEventListener("click", (event) => {
   const answer = event.target.closest("[data-answer]");
   if (answer) answerQuestion(answer.dataset.answer);
+
+  const dailyAnswer = event.target.closest("[data-daily-answer]");
+  if (dailyAnswer) answerDailyQuestion(dailyAnswer.dataset.dailyAnswer);
+
+  const dailyOp = event.target.closest("[data-daily-op]");
+  if (dailyOp) renderDailyChallenge(dailyOp.dataset.dailyOp);
+
+  const dailySetting = event.target.closest("[data-daily-setting]");
+  if (dailySetting) {
+    const name = dailySetting.dataset.dailySetting;
+    const value = dailySetting.dataset.dailyValue;
+    dailySettings[name] = name === "divisorDigits" ? Number(value) : value;
+    renderDailyChallenge(dailyOperation);
+  }
 
   const card = event.target.closest("[data-card]");
   if (card) handleMatch(card);
@@ -677,9 +958,10 @@ document.body.addEventListener("keydown", (event) => {
 el.quizMode.addEventListener("click", () => setMode("quiz"));
 el.matchMode.addEventListener("click", () => setMode("match"));
 el.visualMode.addEventListener("click", () => setMode("visual"));
+el.dailyMode.addEventListener("click", () => setMode("daily"));
 el.reviewMode.addEventListener("click", () => setMode("review"));
 el.resetProgress.addEventListener("click", () => {
-  progress = { stars: 0, streak: 0, mastered: {}, wrong: [] };
+  progress = { stars: 0, streak: 0, mastered: {}, wrong: [], daily: {} };
   round.answered = 0;
   saveProgress();
   renderShell();
