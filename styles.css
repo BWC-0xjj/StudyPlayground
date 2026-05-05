@@ -309,11 +309,162 @@ h2 {
   align-items: stretch;
 }
 
+.learn-layout {
+  display: grid;
+  place-items: center;
+}
+
 .question-panel,
 .feedback-panel,
 .visual-panel,
 .daily-panel {
   min-height: 300px;
+}
+
+.learn-panel {
+  display: grid;
+  gap: 18px;
+  width: min(760px, 100%);
+  padding: clamp(22px, 4vw, 34px);
+  border: 1px solid #dfe8ed;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 14px 34px rgba(35, 48, 61, .1);
+}
+
+.learn-panel h2 {
+  margin: 0;
+  font-size: clamp(30px, 5vw, 48px);
+  line-height: 1.18;
+}
+
+.learn-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.65;
+}
+
+.decimal-strip {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #eadfae;
+  border-radius: 8px;
+  background: #fffdf5;
+}
+
+.decimal-strip button {
+  min-height: 78px;
+  border: 1px solid #e6d7a7;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.decimal-strip button.filled {
+  background: linear-gradient(180deg, #f7bad0, #d9789f);
+  border-color: #c55f88;
+}
+
+.fraction-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 4px solid #5d8fd9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.fraction-board button {
+  min-height: 120px;
+  border: 0;
+  border-right: 2px solid #b7c9ee;
+  background: #fff;
+}
+
+.fraction-board button:last-child {
+  border-right: 0;
+}
+
+.fraction-board button.filled {
+  background: linear-gradient(180deg, #dfeaff, #5d8fd9);
+}
+
+.learn-result {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #dfe8ed;
+  border-radius: 8px;
+  background: #f7fbfc;
+}
+
+.learn-result strong {
+  font-size: clamp(34px, 6vw, 58px);
+  line-height: 1;
+}
+
+.learn-result span {
+  color: var(--muted);
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.learn-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lesson-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lesson-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.lesson-card {
+  display: grid;
+  gap: 10px;
+  min-height: 160px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--lesson-color), #ffffff 55%);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 88% 18%, color-mix(in srgb, var(--lesson-color), transparent 72%), transparent 30%),
+    #fff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.lesson-card::after {
+  content: "はじめる";
+  width: fit-content;
+  margin-top: auto;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--lesson-color);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 950;
+  pointer-events: none;
+}
+
+.lesson-card strong {
+  font-size: clamp(28px, 5vw, 42px);
+}
+
+.lesson-card span {
+  color: var(--muted);
+  font-weight: 900;
+  line-height: 1.55;
 }
 
 .question-panel,
@@ -586,7 +737,7 @@ h2 {
 
 .topic-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
 }
 
@@ -1112,6 +1263,22 @@ h2 {
 
   .question-text {
     font-size: clamp(34px, 14vw, 54px);
+  }
+
+  .decimal-strip {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .decimal-strip button {
+    min-height: 54px;
+  }
+
+  .fraction-board button {
+    min-height: 82px;
+  }
+
+  .lesson-cards {
+    grid-template-columns: 1fr;
   }
 
   .answer-button {

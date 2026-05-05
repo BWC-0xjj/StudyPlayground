@@ -15,6 +15,7 @@ let round = { answered: 0, total: 10 };
 let dailyQuestion = null;
 let dailyOperation = "multiply";
 let dailySettings = { multiplyDigits: "2x2", divisorDigits: 1 };
+let learnStep = { decimal: 1, fraction: 1 };
 
 const el = {
   topicTabs: document.querySelector("#topicTabs"),
@@ -23,6 +24,7 @@ const el = {
   streak: document.querySelector("#streak"),
   stars: document.querySelector("#stars"),
   mastered: document.querySelector("#mastered"),
+  learnMode: document.querySelector("#learnMode"),
   quizMode: document.querySelector("#quizMode"),
   matchMode: document.querySelector("#matchMode"),
   visualMode: document.querySelector("#visualMode"),
@@ -42,10 +44,19 @@ let lastTrackIndex = -1;
 let bgmTracks = Array.isArray(window.BGM_TRACKS) ? [...window.BGM_TRACKS] : [];
 
 function loadProgress() {
-  const fallback = { stars: 0, streak: 0, mastered: {}, wrong: [], daily: {} };
+  const fallback = { stars: 0, streak: 0, mastered: {}, achieved: {}, wrong: [], daily: {} };
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
-    return { ...fallback, ...stored, daily: stored.daily || fallback.daily };
+    const merged = {
+      ...fallback,
+      ...stored,
+      mastered: stored.mastered || fallback.mastered,
+      achieved: stored.achieved || fallback.achieved,
+      wrong: stored.wrong || fallback.wrong,
+      daily: stored.daily || fallback.daily
+    };
+    syncAchievedProgress(merged);
+    return merged;
   } catch {
     return fallback;
   }
@@ -221,12 +232,25 @@ function factKey(topicId, fact) {
   return `${topicId}:${fact[0]}=${fact[1]}`;
 }
 
+function syncAchievedProgress(progressState = progress) {
+  progressState.achieved = progressState.achieved || {};
+  topics.forEach((topic) => {
+    topic.facts.forEach((fact) => {
+      const key = factKey(topic.id, fact);
+      if ((progressState.mastered[key] || 0) >= 3) progressState.achieved[key] = true;
+    });
+  });
+}
+
 function shuffle(items) {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
 function topicMasteredCount(topic) {
-  return topic.facts.filter((fact) => (progress.mastered[factKey(topic.id, fact)] || 0) >= 3).length;
+  return topic.facts.filter((fact) => {
+    const key = factKey(topic.id, fact);
+    return progress.achieved[key] || (progress.mastered[key] || 0) >= 3;
+  }).length;
 }
 
 function renderShell() {
@@ -254,7 +278,7 @@ function renderShell() {
 
   el.streak.textContent = progress.streak;
   el.stars.textContent = progress.stars;
-  el.mastered.textContent = Object.values(progress.mastered).filter((value) => value >= 3).length;
+  el.mastered.textContent = topics.reduce((total, topic) => total + topicMasteredCount(topic), 0);
   const reviewCount = progress.wrong.length;
   el.reviewMode.innerHTML = `<ruby>復習<rt>ふくしゅう</rt></ruby>${reviewCount ? `<span class="review-count">${reviewCount}</span>` : ""}`;
   const dailyDone = todayDailyProgress();
@@ -338,6 +362,193 @@ function renderQuiz(reviewOnly = false) {
   `;
 }
 
+function renderLearnMode() {
+  const topic = topicById(activeTopicId);
+  if (topic.id === "decimal") {
+    renderDecimalLesson(topic);
+    return;
+  }
+  if (topic.id === "fraction") {
+    renderFractionLesson(topic);
+    return;
+  }
+  activeTopicId = "decimal";
+  renderShell();
+  renderDecimalLesson(topicById("decimal"));
+}
+
+function openLearnTopic(topicId) {
+  activeTopicId = topicId;
+  learnStep[topicId] = learnStep[topicId] || 1;
+  renderShell();
+  mode = "learn";
+  el.learnMode.classList.add("active");
+  el.quizMode.classList.remove("active");
+  el.matchMode.classList.remove("active");
+  el.visualMode.classList.remove("active");
+  el.dailyMode.classList.remove("active");
+  el.reviewMode.classList.remove("active");
+  if (topicId === "fraction") renderFractionLesson(topicById("fraction"));
+  else renderDecimalLesson(topicById("decimal"));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+window.openLearnTopic = openLearnTopic;
+
+function renderDecimalLesson(topic) {
+  const step = learnStep.decimal;
+  const stepHtml = {
+    1: `
+      <h2><ruby>小数<rt>しょうすう</rt></ruby>は「1より<ruby>小<rt>ちい</rt></ruby>さい<ruby>数<rt>かず</rt></ruby>」もかける</h2>
+      <p>下のめもりをクリックして、0.1 が何こあるか見てみよう。</p>
+      <div class="decimal-strip" aria-label="0.1 のめもり">
+        ${Array.from({ length: 10 }, (_, index) => `<button data-decimal-part="${index + 1}" type="button"></button>`).join("")}
+      </div>
+      <div class="learn-result" id="learnResult">
+        <strong>0.0</strong>
+        <span>まだ色がついていません。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-decimal-demo="5" type="button">0.5を<ruby>見<rt>み</rt></ruby>る</button>
+        <button class="primary-button" data-learn-next type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
+      </div>
+    `,
+    2: `
+      <h2>0.1 が 10 こで 1</h2>
+      <p>0.1 を 10 こ集めると、ぴったり 1 になります。</p>
+      <div class="decimal-strip" aria-label="0.1 が 10 こ">
+        ${Array.from({ length: 10 }, (_, index) => `<button class="filled" data-decimal-part="${index + 1}" type="button"></button>`).join("")}
+      </div>
+      <div class="learn-result">
+        <strong>1.0</strong>
+        <span>0.1 が 10 こで 1。小数は 1 の中を細かく見るための数です。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-learn-prev type="button"><ruby>前<rt>まえ</rt></ruby>へ</button>
+        <button class="primary-button" data-learn-next type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
+      </div>
+    `,
+    3: `
+      <h2>0.5 は<ruby>半分<rt>はんぶん</rt></ruby></h2>
+      <p>1 の半分は 0.5。分数で書くと 1/2 と同じ大きさです。</p>
+      <div class="decimal-compare" aria-label="0.5 と半分">
+        <span></span><span></span>
+      </div>
+      <div class="learn-result">
+        <strong>0.5 = 1/2</strong>
+        <span>小数と分数は、同じ大きさをちがう書き方で表せます。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-learn-prev type="button"><ruby>前<rt>まえ</rt></ruby>へ</button>
+        <button class="primary-button" data-start-quiz type="button"><ruby>問題<rt>もんだい</rt></ruby>へ</button>
+      </div>
+    `
+  };
+  el.gameArea.innerHTML = `
+    <div class="learn-layout">
+      <section class="learn-panel">
+        <div class="topic-label" style="background:${topic.color}22;color:${topic.color}">${topicTitle(topic)}</div>
+        <div class="lesson-switch">
+          <button class="daily-choice active" data-learn-topic="decimal" type="button" onclick="openLearnTopic('decimal')">小数</button>
+          <button class="daily-choice" data-learn-topic="fraction" type="button" onclick="openLearnTopic('fraction')">分数</button>
+        </div>
+        <div class="lesson-progress"><span style="width:${Math.round((step / 3) * 100)}%"></span></div>
+        ${stepHtml[step]}
+      </section>
+    </div>
+  `;
+}
+
+function renderFractionLesson(topic) {
+  const step = learnStep.fraction;
+  const stepHtml = {
+    1: `
+      <h2><ruby>分数<rt>ぶんすう</rt></ruby>は「同じ大きさにわけた<ruby>数<rt>かず</rt></ruby>」</h2>
+      <p>下の形をクリックして、何こぶん色がついたか見てみよう。</p>
+      <div class="fraction-board" aria-label="分数の形">
+        ${Array.from({ length: 4 }, (_, index) => `<button data-fraction-part="${index + 1}" type="button"></button>`).join("")}
+      </div>
+      <div class="learn-result" id="learnResult">
+        <strong>0/4</strong>
+        <span>4 こにわけたうち、まだ 0 こぶんです。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-fraction-demo="2" type="button">半分を<ruby>見<rt>み</rt></ruby>る</button>
+        <button class="primary-button" data-learn-next type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
+      </div>
+    `,
+    2: `
+      <h2><ruby>下<rt>した</rt></ruby>の<ruby>数<rt>かず</rt></ruby>は「いくつにわけたか」</h2>
+      <p>1/4 の 4 は、同じ大きさに 4 こにわけたという意味です。</p>
+      <div class="fraction-board quarter-demo" aria-label="4 こにわける">
+        ${Array.from({ length: 4 }, (_, index) => `<button class="${index === 0 ? "filled" : ""}" type="button"></button>`).join("")}
+      </div>
+      <div class="learn-result">
+        <strong>1/4</strong>
+        <span>4 こにわけたうちの 1 こぶんです。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-learn-prev type="button"><ruby>前<rt>まえ</rt></ruby>へ</button>
+        <button class="primary-button" data-learn-next type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
+      </div>
+    `,
+    3: `
+      <h2>2/4 は 1/2 と同じ</h2>
+      <p>4 こにわけた 2 こぶんは、ちょうど半分です。</p>
+      <div class="fraction-board" aria-label="2/4 は半分">
+        ${Array.from({ length: 4 }, (_, index) => `<button class="${index < 2 ? "filled" : ""}" type="button"></button>`).join("")}
+      </div>
+      <div class="learn-result">
+        <strong>2/4 = 1/2</strong>
+        <span>同じ大きさなら、ちがう分数で書くこともあります。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-learn-prev type="button"><ruby>前<rt>まえ</rt></ruby>へ</button>
+        <button class="primary-button" data-start-quiz type="button"><ruby>問題<rt>もんだい</rt></ruby>へ</button>
+      </div>
+    `
+  };
+  el.gameArea.innerHTML = `
+    <div class="learn-layout">
+      <section class="learn-panel">
+        <div class="topic-label" style="background:${topic.color}22;color:${topic.color}">${topicTitle(topic)}</div>
+        <div class="lesson-switch">
+          <button class="daily-choice" data-learn-topic="decimal" type="button" onclick="openLearnTopic('decimal')">小数</button>
+          <button class="daily-choice active" data-learn-topic="fraction" type="button" onclick="openLearnTopic('fraction')">分数</button>
+        </div>
+        <div class="lesson-progress"><span style="width:${Math.round((step / 3) * 100)}%"></span></div>
+        ${stepHtml[step]}
+      </section>
+    </div>
+  `;
+}
+
+function updateDecimalLesson(count) {
+  const buttons = el.gameArea.querySelectorAll("[data-decimal-part]");
+  buttons.forEach((button, index) => button.classList.toggle("filled", index < count));
+  const result = el.gameArea.querySelector("#learnResult");
+  const value = (count / 10).toFixed(1);
+  if (result) {
+    result.innerHTML = `
+      <strong>${value}</strong>
+      <span>0.1 が ${count} こぶん。10 こで 1 になります。</span>
+    `;
+  }
+}
+
+function updateFractionLesson(count) {
+  const buttons = el.gameArea.querySelectorAll("[data-fraction-part]");
+  buttons.forEach((button, index) => button.classList.toggle("filled", index < count));
+  const result = el.gameArea.querySelector("#learnResult");
+  const label = count === 2 ? "2/4 = 1/2" : `${count}/4`;
+  if (result) {
+    result.innerHTML = `
+      <strong>${label}</strong>
+      <span>4 こにわけたうち、${count} こぶんに色がつきました。</span>
+    `;
+  }
+}
+
 function visualScene(question) {
   const topicId = question.topic.id;
   const color = question.topic.color;
@@ -416,6 +627,14 @@ function visualScene(question) {
     title = "箱の中の大きさ";
     subtitle = "小さい立方体をつめて考える";
     drawing = `<path d="M190 142l100-58 100 58-100 58z" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M190 142v92l100 58 100-58v-92" fill="none" stroke="${color}" stroke-width="6"/><path d="M290 200v92M232 166l100-58M252 178l100-58M212 154l100-58M230 256l100-58M270 280l100-58" stroke="${color}" stroke-width="4" opacity=".52"/><path d="M190 190l100 58 100-58" stroke="#f2b84b" stroke-width="5" opacity=".75"/>`;
+  } else if (topicId === "decimal") {
+    title = "小数をめもりで見る";
+    subtitle = "1 を 10 こにわけると 0.1 ずつ";
+    drawing = `<rect x="80" y="134" width="420" height="64" rx="12" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M122 134v64M164 134v64M206 134v64M248 134v64M290 134v64M332 134v64M374 134v64M416 134v64M458 134v64" stroke="${color}" stroke-width="4" opacity=".62"/><path d="M80 134h168v64H92a12 12 0 0 1-12-12z" fill="${color}" opacity=".22"/><circle cx="164" cy="244" r="24" fill="#fff8e8" stroke="#f2b84b" stroke-width="5"/><circle cx="290" cy="244" r="24" fill="#fff8e8" stroke="#f2b84b" stroke-width="5"/><circle cx="416" cy="244" r="24" fill="#fff8e8" stroke="#f2b84b" stroke-width="5"/>`;
+  } else if (topicId === "fraction") {
+    title = "分数を形で見る";
+    subtitle = "同じ大きさにわけたうちのいくつか";
+    drawing = `<circle cx="190" cy="174" r="82" fill="#fff" stroke="${color}" stroke-width="7"/><path d="M190 174L190 92A82 82 0 0 1 272 174z" fill="${color}" opacity=".28" stroke="${color}" stroke-width="4"/><path d="M190 92v164M108 174h164" stroke="${color}" stroke-width="4" opacity=".55"/><rect x="340" y="100" width="128" height="128" rx="10" fill="#fff" stroke="${color}" stroke-width="6"/><path d="M404 100v128M340 164h128" stroke="${color}" stroke-width="4" opacity=".62"/><path d="M340 100h64v64h-64zM404 164h64v64h-64z" fill="#f2b84b" opacity=".26"/>`;
   } else {
     drawing = `<circle cx="290" cy="176" r="86" fill="#fff" stroke="${color}" stroke-width="7"/><path d="M224 176h132" stroke="#f2b84b" stroke-width="10" stroke-linecap="round"/><path d="M356 176l-24-18v36z" fill="#f2b84b"/>`;
   }
@@ -617,10 +836,12 @@ function answerQuestion(value) {
     progress.streak += 1;
     progress.stars += 1;
     progress.mastered[currentQuestion.key] = (progress.mastered[currentQuestion.key] || 0) + 1;
-    progress.wrong = progress.wrong.filter((key) => key !== currentQuestion.key || (progress.mastered[key] || 0) < 2);
+    if ((progress.mastered[currentQuestion.key] || 0) >= 3) {
+      progress.achieved[currentQuestion.key] = true;
+      progress.wrong = progress.wrong.filter((key) => key !== currentQuestion.key);
+    }
   } else {
     progress.streak = 0;
-    progress.mastered[currentQuestion.key] = Math.max(0, (progress.mastered[currentQuestion.key] || 0) - 1);
     if (!progress.wrong.includes(currentQuestion.key)) progress.wrong.push(currentQuestion.key);
   }
 
@@ -871,7 +1092,10 @@ function handleMatch(card) {
     progress.stars += 1;
     progress.streak += 1;
     progress.mastered[pair.key] = (progress.mastered[pair.key] || 0) + 1;
-    progress.wrong = progress.wrong.filter((key) => key !== pair.key);
+    if ((progress.mastered[pair.key] || 0) >= 3) {
+      progress.achieved[pair.key] = true;
+      progress.wrong = progress.wrong.filter((key) => key !== pair.key);
+    }
     saveProgress();
     renderShell();
     selectedMatch = null;
@@ -892,13 +1116,15 @@ function handleMatch(card) {
 
 function setMode(nextMode) {
   mode = nextMode;
+  el.learnMode.classList.toggle("active", mode === "learn");
   el.quizMode.classList.toggle("active", mode === "quiz");
   el.matchMode.classList.toggle("active", mode === "match");
   el.visualMode.classList.toggle("active", mode === "visual");
   el.dailyMode.classList.toggle("active", mode === "daily");
   el.reviewMode.classList.toggle("active", mode === "review");
 
-  if (mode === "match") renderMatch();
+  if (mode === "learn") renderLearnMode();
+  else if (mode === "match") renderMatch();
   else if (mode === "visual") renderVisualQuiz();
   else if (mode === "daily") renderDailyChallenge(dailyOperation);
   else renderQuiz(mode === "review");
@@ -910,7 +1136,7 @@ el.topicTabs.addEventListener("click", (event) => {
   activeTopicId = button.dataset.topic;
   round.answered = 0;
   renderShell();
-  setMode(mode === "daily" ? "quiz" : mode);
+  setMode(mode === "daily" || mode === "learn" ? "quiz" : mode);
 });
 
 el.topicGrid.addEventListener("click", (event) => {
@@ -919,11 +1145,29 @@ el.topicGrid.addEventListener("click", (event) => {
   activeTopicId = button.dataset.topic;
   round.answered = 0;
   renderShell();
-  setMode(mode === "daily" ? "quiz" : mode);
+  setMode(mode === "daily" || mode === "learn" ? "quiz" : mode);
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
 el.gameArea.addEventListener("click", (event) => {
+  const learnTopic = event.target.closest("[data-learn-topic]");
+  if (learnTopic) {
+    openLearnTopic(learnTopic.dataset.learnTopic);
+    return;
+  }
+
+  if (event.target.closest("[data-start-quiz]")) {
+    if (activeTopicId !== "decimal" && activeTopicId !== "fraction") activeTopicId = "decimal";
+    renderShell();
+    setMode("quiz");
+    return;
+  }
+
+  if (event.target.closest("[data-start-visual]")) {
+    setMode("visual");
+    return;
+  }
+
   const answer = event.target.closest("[data-answer]");
   if (answer) answerQuestion(answer.dataset.answer);
 
@@ -941,6 +1185,32 @@ el.gameArea.addEventListener("click", (event) => {
     renderDailyChallenge(dailyOperation);
   }
 
+  const decimalPart = event.target.closest("[data-decimal-part]");
+  if (decimalPart) updateDecimalLesson(Number(decimalPart.dataset.decimalPart));
+
+  const decimalDemo = event.target.closest("[data-decimal-demo]");
+  if (decimalDemo) updateDecimalLesson(Number(decimalDemo.dataset.decimalDemo));
+
+  const fractionPart = event.target.closest("[data-fraction-part]");
+  if (fractionPart) updateFractionLesson(Number(fractionPart.dataset.fractionPart));
+
+  const fractionDemo = event.target.closest("[data-fraction-demo]");
+  if (fractionDemo) updateFractionLesson(Number(fractionDemo.dataset.fractionDemo));
+
+  if (event.target.closest("[data-learn-next]")) {
+    const key = activeTopicId === "fraction" ? "fraction" : "decimal";
+    learnStep[key] = Math.min(3, learnStep[key] + 1);
+    openLearnTopic(key);
+    return;
+  }
+
+  if (event.target.closest("[data-learn-prev]")) {
+    const key = activeTopicId === "fraction" ? "fraction" : "decimal";
+    learnStep[key] = Math.max(1, learnStep[key] - 1);
+    openLearnTopic(key);
+    return;
+  }
+
   const card = event.target.closest("[data-card]");
   if (card) handleMatch(card);
 });
@@ -955,13 +1225,14 @@ document.body.addEventListener("keydown", (event) => {
   }
 });
 
+el.learnMode.addEventListener("click", () => setMode("learn"));
 el.quizMode.addEventListener("click", () => setMode("quiz"));
 el.matchMode.addEventListener("click", () => setMode("match"));
 el.visualMode.addEventListener("click", () => setMode("visual"));
 el.dailyMode.addEventListener("click", () => setMode("daily"));
 el.reviewMode.addEventListener("click", () => setMode("review"));
 el.resetProgress.addEventListener("click", () => {
-  progress = { stars: 0, streak: 0, mastered: {}, wrong: [], daily: {} };
+  progress = { stars: 0, streak: 0, mastered: {}, achieved: {}, wrong: [], daily: {} };
   round.answered = 0;
   saveProgress();
   renderShell();
