@@ -426,8 +426,116 @@ h2 {
 
 .lesson-switch {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.clock-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(310px, 100%);
+  margin-inline: auto;
+  aspect-ratio: 1;
+}
+
+.clock-face {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 10px 14px rgba(35, 48, 61, .12));
+}
+
+.clock-rim {
+  fill: #fffefa;
+  stroke: #de6f45;
+  stroke-width: 10;
+}
+
+.clock-face text {
+  fill: #263746;
+  font-size: 22px;
+  font-weight: 950;
+  text-anchor: middle;
+}
+
+.clock-face .minute-tick {
+  stroke: #aab7be;
+  stroke-width: 2;
+}
+
+.clock-face .hour-tick {
+  stroke: #415766;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.clock-hand {
+  stroke-linecap: round;
+}
+
+.hour-hand {
+  stroke: #263746;
+  stroke-width: 12;
+}
+
+.minute-hand {
+  stroke: #3f83c4;
+  stroke-width: 8;
+}
+
+.second-hand {
+  stroke: #e25353;
+  stroke-width: 4;
+}
+
+.clock-pin {
+  fill: #de6f45;
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+.clock-period {
+  position: absolute;
+  z-index: 1;
+  top: 42%;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #fff1e8;
+  color: #a84728;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.clock-visual + .question-text {
+  font-size: clamp(26px, 4vw, 44px);
+  text-align: center;
+}
+
+.clock-lesson .clock-visual {
+  width: min(360px, 88vw);
+}
+
+.clock-count-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.clock-count-row span {
+  padding: 10px;
+  border: 2px solid #f1b39a;
+  border-radius: 8px;
+  background: #fff7f2;
+  color: #a84728;
+  font-size: 22px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.clock-calculation {
+  border-color: #f1b39a;
+  background: #fff7f2;
 }
 
 .lesson-card {
@@ -1263,6 +1371,14 @@ h2 {
 
   .question-text {
     font-size: clamp(34px, 14vw, 54px);
+  }
+
+  .clock-visual + .question-text {
+    font-size: 28px;
+  }
+
+  .lesson-switch {
+    grid-template-columns: 1fr;
   }
 
   .decimal-strip {

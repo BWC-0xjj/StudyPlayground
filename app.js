@@ -15,7 +15,7 @@ let round = { answered: 0, total: 10 };
 let dailyQuestion = null;
 let dailyOperation = "multiply";
 let dailySettings = { multiplyDigits: "2x2", divisorDigits: 1 };
-let learnStep = { decimal: 1, fraction: 1 };
+let learnStep = { decimal: 1, fraction: 1, clock: 1 };
 
 const el = {
   topicTabs: document.querySelector("#topicTabs"),
@@ -202,7 +202,12 @@ function escapeHtml(value) {
 }
 
 function renderUnitText(value) {
-  return escapeHtml(value).replace(/時間/g, "<ruby>時間<rt>じかん</rt></ruby>");
+  return escapeHtml(value)
+    .replace(/時間/g, "<ruby>時間<rt>じかん</rt></ruby>")
+    .replace(/午前/g, "<ruby>午前<rt>ごぜん</rt></ruby>")
+    .replace(/午後/g, "<ruby>午後<rt>ごご</rt></ruby>")
+    .replace(/短い/g, "<ruby>短<rt>みじか</rt></ruby>い")
+    .replace(/秒/g, "<ruby>秒<rt>びょう</rt></ruby>");
 }
 
 function todayKey() {
@@ -296,6 +301,8 @@ function makeQuestion(topicId = activeTopicId, reviewOnly = false) {
 
   if (!facts.length) return null;
 
+  if (topic.id === "clock") return makeClockQuestion(topic, facts);
+
   const fact = facts[Math.floor(Math.random() * facts.length)];
   const reversed = Math.random() > 0.78;
   const prompt = reversed ? `${fact[1]} = ?` : `${fact[0]} = ?`;
@@ -307,6 +314,134 @@ function makeQuestion(topicId = activeTopicId, reviewOnly = false) {
   const choices = shuffle([answer, ...shuffle(wrongPool).slice(0, 3)]);
 
   return { topic, fact, prompt, answer, choices, formula, hint: fact[2], key: factKey(topic.id, fact) };
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function clockLabel(hour, minute, second = null, period = "") {
+  const seconds = second === null ? "" : `${second}秒`;
+  return `${period}${hour}時${minute}分${seconds}`;
+}
+
+function clockFaceSvg(hour, minute, second = null, period = "") {
+  const handPoint = (degrees, length) => {
+    const radians = (degrees - 90) * Math.PI / 180;
+    return { x: 150 + Math.cos(radians) * length, y: 150 + Math.sin(radians) * length };
+  };
+  const hourPoint = handPoint(((hour % 12) + minute / 60) * 30, 62);
+  const minutePoint = handPoint((minute + (second || 0) / 60) * 6, 94);
+  const secondPoint = second === null ? null : handPoint(second * 6, 104);
+  const ticks = Array.from({ length: 60 }, (_, index) => {
+    const outer = handPoint(index * 6, 126);
+    const inner = handPoint(index * 6, index % 5 === 0 ? 114 : 120);
+    return `<line x1="${inner.x.toFixed(1)}" y1="${inner.y.toFixed(1)}" x2="${outer.x.toFixed(1)}" y2="${outer.y.toFixed(1)}" class="${index % 5 === 0 ? "hour-tick" : "minute-tick"}"/>`;
+  }).join("");
+  const numbers = Array.from({ length: 12 }, (_, index) => {
+    const point = handPoint((index + 1) * 30, 100);
+    return `<text x="${point.x.toFixed(1)}" y="${(point.y + 7).toFixed(1)}">${index + 1}</text>`;
+  }).join("");
+
+  return `
+    <div class="clock-visual" aria-label="${period}${hour}時${minute}分${second === null ? "" : `${second}秒`}の時計">
+      ${period ? `<span class="clock-period">${period}</span>` : ""}
+      <svg class="clock-face" viewBox="0 0 300 300" role="img">
+        <circle class="clock-rim" cx="150" cy="150" r="139" />
+        ${ticks}${numbers}
+        <line class="clock-hand hour-hand" x1="150" y1="150" x2="${hourPoint.x}" y2="${hourPoint.y}" />
+        <line class="clock-hand minute-hand" x1="150" y1="150" x2="${minutePoint.x}" y2="${minutePoint.y}" />
+        ${secondPoint ? `<line class="clock-hand second-hand" x1="150" y1="150" x2="${secondPoint.x}" y2="${secondPoint.y}" />` : ""}
+        <circle class="clock-pin" cx="150" cy="150" r="8" />
+      </svg>
+    </div>
+  `;
+}
+
+function makeClockChoices(answer, formatter, values) {
+  const choices = [answer];
+  values.forEach((value) => {
+    const label = formatter(value);
+    if (!choices.includes(label)) choices.push(label);
+  });
+  return shuffle(choices.slice(0, 4));
+}
+
+function makeClockQuestion(topic, availableFacts) {
+  const fact = availableFacts[Math.floor(Math.random() * availableFacts.length)];
+  const kind = topic.facts.indexOf(fact);
+  const hour = kind === 3 || kind === 5 ? randomInt(1, 11) : randomInt(1, 12);
+  const nextHour = hour === 12 ? 1 : hour + 1;
+  const minute = kind === 0 ? 0 : randomInt(0, 11) * 5;
+  let second = null;
+  let period = "";
+  let prompt = "この とけいは なんじ なんぷん？";
+  let answer = clockLabel(hour, minute);
+  let formula = answer;
+  let hint = "短いはりで時、長いはりで分を見ます。長いはりの数字は 5 ずつ数えます。";
+  let choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute), [
+    { hour: nextHour, minute },
+    { hour, minute: (minute + 5) % 60 },
+    { hour, minute: (minute + 50) % 60 }
+  ]);
+
+  if (kind === 2) {
+    second = randomInt(0, 11) * 5;
+    prompt = "この とけいは なんじ なんぷん なんびょう？";
+    answer = clockLabel(hour, minute, second);
+    formula = `短いはりは ${hour}時、長いはりは ${minute}分、赤いはりは ${second}秒`;
+    hint = "赤いはりが秒です。数字を 1 つすすむと 5 秒すすみます。";
+    choices = makeClockChoices(answer, (value) => clockLabel(hour, value.minute, value.second), [
+      { minute, second: (second + 5) % 60 },
+      { minute: (minute + 5) % 60, second },
+      { minute, second: (second + 50) % 60 }
+    ]);
+  } else if (kind === 3) {
+    period = "午前";
+    prompt = "午前の とけいです。なんじ なんぷん？";
+    answer = clockLabel(hour, minute, null, period);
+    formula = `午前なので ${answer}`;
+    hint = "午前は、夜中からお昼までの時こくです。";
+    choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute, null, value.period), [
+      { hour, minute, period: "午後" },
+      { hour: nextHour, minute, period },
+      { hour, minute: (minute + 5) % 60, period }
+    ]);
+  } else if (kind === 4) {
+    period = "午後";
+    prompt = "午後の とけいです。なんじ なんぷん？";
+    answer = clockLabel(hour, minute, null, period);
+    formula = `午後なので ${answer}`;
+    hint = "午後は、お昼の 12 時から夜までの時こくです。";
+    choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute, null, value.period), [
+      { hour, minute, period: "午前" },
+      { hour: nextHour, minute, period },
+      { hour, minute: (minute + 5) % 60, period }
+    ]);
+  } else if (kind === 5) {
+    period = "午後";
+    prompt = "この午後の時こくを、24時間であらわすと？";
+    answer = clockLabel(hour + 12, minute);
+    formula = `${hour} + 12 = ${hour + 12} → ${answer}`;
+    hint = "午後の時こくは、時に 12 をたします。分はそのままです。";
+    choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute), [
+      { hour, minute },
+      { hour: hour + 11, minute },
+      { hour: hour + 12, minute: (minute + 5) % 60 }
+    ]);
+  }
+
+  return {
+    topic,
+    fact,
+    prompt,
+    answer,
+    choices,
+    formula,
+    hint,
+    visual: clockFaceSvg(hour, minute, second, period),
+    key: factKey(topic.id, fact)
+  };
 }
 
 function renderRoundProgress(topic) {
@@ -349,6 +484,7 @@ function renderQuiz(reviewOnly = false) {
         <div class="topic-label" style="background:${currentQuestion.topic.color}22;color:${currentQuestion.topic.color}">
           ${topicTitle(currentQuestion.topic)}
         </div>
+        ${currentQuestion.visual || ""}
         <div class="question-text">${renderUnitText(currentQuestion.prompt)}</div>
         ${renderRoundProgress(currentQuestion.topic)}
       </div>
@@ -372,6 +508,10 @@ function renderLearnMode() {
     renderFractionLesson(topic);
     return;
   }
+  if (topic.id === "clock") {
+    renderClockLesson(topic);
+    return;
+  }
   activeTopicId = "decimal";
   renderShell();
   renderDecimalLesson(topicById("decimal"));
@@ -389,6 +529,7 @@ function openLearnTopic(topicId) {
   el.dailyMode.classList.remove("active");
   el.reviewMode.classList.remove("active");
   if (topicId === "fraction") renderFractionLesson(topicById("fraction"));
+  else if (topicId === "clock") renderClockLesson(topicById("clock"));
   else renderDecimalLesson(topicById("decimal"));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -451,6 +592,7 @@ function renderDecimalLesson(topic) {
         <div class="lesson-switch">
           <button class="daily-choice active" data-learn-topic="decimal" type="button" onclick="openLearnTopic('decimal')">小数</button>
           <button class="daily-choice" data-learn-topic="fraction" type="button" onclick="openLearnTopic('fraction')">分数</button>
+          <button class="daily-choice" data-learn-topic="clock" type="button" onclick="openLearnTopic('clock')">とけい</button>
         </div>
         <div class="lesson-progress"><span style="width:${Math.round((step / 3) * 100)}%"></span></div>
         ${stepHtml[step]}
@@ -515,8 +657,82 @@ function renderFractionLesson(topic) {
         <div class="lesson-switch">
           <button class="daily-choice" data-learn-topic="decimal" type="button" onclick="openLearnTopic('decimal')">小数</button>
           <button class="daily-choice active" data-learn-topic="fraction" type="button" onclick="openLearnTopic('fraction')">分数</button>
+          <button class="daily-choice" data-learn-topic="clock" type="button" onclick="openLearnTopic('clock')">とけい</button>
         </div>
         <div class="lesson-progress"><span style="width:${Math.round((step / 3) * 100)}%"></span></div>
+        ${stepHtml[step]}
+      </section>
+    </div>
+  `;
+}
+
+function renderClockLesson(topic) {
+  const step = learnStep.clock;
+  const stepHtml = {
+    1: `
+      <h2>2 つの はりで「時」と「分」を見る</h2>
+      <p><strong>短いはり</strong>は「時」、<strong>長いはり</strong>は「分」をおしえます。</p>
+      ${clockFaceSvg(3, 0)}
+      <div class="learn-result">
+        <strong>3時00分</strong>
+        <span>短いはりは 3、長いはりは 12 をさしています。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="primary-button" data-learn-next type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
+      </div>
+    `,
+    2: `
+      <h2>長いはりは「5ずつ」数える</h2>
+      <p>長いはりが 1 なら 5分、2 なら 10分、4 なら 20分です。</p>
+      ${clockFaceSvg(3, 20)}
+      <div class="clock-count-row" aria-label="5分ずつ数える"><span>5</span><span>10</span><span>15</span><span>20</span></div>
+      <div class="learn-result">
+        <strong>3時20分</strong>
+        <span>長いはりが 4。5 × 4 = 20分です。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-learn-prev type="button"><ruby>前<rt>まえ</rt></ruby>へ</button>
+        <button class="primary-button" data-learn-next type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
+      </div>
+    `,
+    3: `
+      <h2>赤いはりは「秒」</h2>
+      <p>赤いはりが 1 まわりすると 60秒。数字を 1 つすすむと 5秒です。</p>
+      ${clockFaceSvg(8, 15, 30)}
+      <div class="learn-result">
+        <strong>8時15分30秒</strong>
+        <span>赤いはりが 6 なので、5 × 6 = 30秒です。</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-learn-prev type="button"><ruby>前<rt>まえ</rt></ruby>へ</button>
+        <button class="primary-button" data-learn-next type="button"><ruby>次<rt>つぎ</rt></ruby>へ</button>
+      </div>
+    `,
+    4: `
+      <h2>午後は「12をたす」</h2>
+      <p>午後3時を 24時間であらわすときは、3 に 12 をたします。分はそのままです。</p>
+      ${clockFaceSvg(3, 20, null, "午後")}
+      <div class="learn-result clock-calculation">
+        <strong>3 + 12 = 15</strong>
+        <span>午後3時20分 = 15時20分</span>
+      </div>
+      <div class="learn-actions">
+        <button class="ghost-button" data-learn-prev type="button"><ruby>前<rt>まえ</rt></ruby>へ</button>
+        <button class="primary-button" data-start-quiz type="button"><ruby>問題<rt>もんだい</rt></ruby>へ</button>
+      </div>
+    `
+  };
+
+  el.gameArea.innerHTML = `
+    <div class="learn-layout">
+      <section class="learn-panel clock-lesson">
+        <div class="topic-label" style="background:${topic.color}22;color:${topic.color}">${topicTitle(topic)}</div>
+        <div class="lesson-switch">
+          <button class="daily-choice" data-learn-topic="decimal" type="button" onclick="openLearnTopic('decimal')">小数</button>
+          <button class="daily-choice" data-learn-topic="fraction" type="button" onclick="openLearnTopic('fraction')">分数</button>
+          <button class="daily-choice active" data-learn-topic="clock" type="button" onclick="openLearnTopic('clock')">とけい</button>
+        </div>
+        <div class="lesson-progress"><span style="width:${Math.round((step / 4) * 100)}%"></span></div>
         ${stepHtml[step]}
       </section>
     </div>
@@ -1157,7 +1373,7 @@ el.gameArea.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("[data-start-quiz]")) {
-    if (activeTopicId !== "decimal" && activeTopicId !== "fraction") activeTopicId = "decimal";
+    if (!["decimal", "fraction", "clock"].includes(activeTopicId)) activeTopicId = "decimal";
     renderShell();
     setMode("quiz");
     return;
@@ -1198,14 +1414,15 @@ el.gameArea.addEventListener("click", (event) => {
   if (fractionDemo) updateFractionLesson(Number(fractionDemo.dataset.fractionDemo));
 
   if (event.target.closest("[data-learn-next]")) {
-    const key = activeTopicId === "fraction" ? "fraction" : "decimal";
-    learnStep[key] = Math.min(3, learnStep[key] + 1);
+    const key = ["fraction", "clock"].includes(activeTopicId) ? activeTopicId : "decimal";
+    const lastStep = key === "clock" ? 4 : 3;
+    learnStep[key] = Math.min(lastStep, learnStep[key] + 1);
     openLearnTopic(key);
     return;
   }
 
   if (event.target.closest("[data-learn-prev]")) {
-    const key = activeTopicId === "fraction" ? "fraction" : "decimal";
+    const key = ["fraction", "clock"].includes(activeTopicId) ? activeTopicId : "decimal";
     learnStep[key] = Math.max(1, learnStep[key] - 1);
     openLearnTopic(key);
     return;
