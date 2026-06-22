@@ -941,6 +941,9 @@ h2 {
 .answer-dialog {
   position: relative;
   width: min(560px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: clamp(22px, 4vw, 34px);
   border: 1px solid #dfe8ed;
   border-radius: 8px;
@@ -1287,7 +1290,11 @@ h2 {
 }
 
 .next-question {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
   width: 100%;
+  box-shadow: 0 -10px 18px #fffef9;
 }
 
 @media (max-width: 850px) {
@@ -1408,6 +1415,7 @@ h2 {
 
   .answer-dialog {
     width: 100%;
+    max-height: calc(100dvh - 20px);
   }
 
   .celebration-card {
