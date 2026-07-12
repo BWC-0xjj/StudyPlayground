@@ -367,31 +367,96 @@ function makeClockChoices(answer, formatter, values) {
   return shuffle(choices.slice(0, 4));
 }
 
+function normalizeClock(hour, minute) {
+  const total = ((hour * 60 + minute) % 1440 + 1440) % 1440;
+  const hour24 = Math.floor(total / 60);
+  const displayHour = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return { hour: displayHour, hour24, displayHour, minute: total % 60 };
+}
+
 function makeClockQuestion(topic, availableFacts) {
   const fact = availableFacts[Math.floor(Math.random() * availableFacts.length)];
   const kind = topic.facts.indexOf(fact);
   const hour = kind === 3 || kind === 5 ? randomInt(1, 11) : randomInt(1, 12);
   const nextHour = hour === 12 ? 1 : hour + 1;
-  const minute = kind === 0 ? 0 : randomInt(0, 11) * 5;
+  const minute = kind === 0 ? [0, 15, 30, 45][randomInt(0, 3)] : randomInt(0, 59);
   let second = null;
   let period = "";
   let prompt = "この とけいは なんじ なんぷん？";
   let answer = clockLabel(hour, minute);
   let formula = answer;
-  let hint = "短いはりで時、長いはりで分を見ます。長いはりの数字は 5 ずつ数えます。";
+  let hint = "短いはりで時、長いはりで分を見ます。数字のあいだの小さい線は 1 分ずつです。";
   let choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute), [
     { hour: nextHour, minute },
-    { hour, minute: (minute + 5) % 60 },
-    { hour, minute: (minute + 50) % 60 }
+    normalizeClock(hour, minute + 1),
+    normalizeClock(hour, minute - 1),
+    normalizeClock(hour, minute + 5),
+    normalizeClock(hour, minute - 5)
   ]);
 
-  if (kind === 2) {
-    second = randomInt(0, 11) * 5;
+  if (kind === 0 && minute > 0) {
+    const remaining = 60 - minute;
+    prompt = "次の時こくまで、あとなんぷん？";
+    answer = `${remaining}分`;
+    formula = `60 - ${minute} = ${remaining}分`;
+    hint = "長いはりが 12 まで行くと、次の時こくです。いまの分を 60 からひきます。";
+    choices = makeClockChoices(answer, (value) => `${value}分`, [
+      remaining + 5,
+      remaining - 5,
+      remaining + 10,
+      remaining - 10,
+      minute,
+      minute + 5,
+      minute - 5,
+      60 - ((minute + 5) % 60)
+    ].filter((value) => value > 0 && value < 60));
+  } else if (kind === 1 && Math.random() > 0.45) {
+    const addMinutes = [10, 15, 20, 25, 30, 35, 40, 45][randomInt(0, 7)];
+    const end = normalizeClock(hour, minute + addMinutes);
+    prompt = `この時こくの ${addMinutes}分後は？`;
+    answer = clockLabel(end.displayHour, end.minute);
+    formula = `${clockLabel(hour, minute)} + ${addMinutes}分 = ${answer}`;
+    hint = "分をたして、60分をこえたら時を 1 つすすめます。";
+    choices = makeClockChoices(answer, (value) => clockLabel(value.displayHour, value.minute), [
+      normalizeClock(hour, minute + addMinutes - 5),
+      normalizeClock(hour, minute + addMinutes + 5),
+      normalizeClock(hour, minute + addMinutes + 10),
+      normalizeClock(hour, minute - addMinutes)
+    ]);
+  } else if (kind === 1 && Math.random() > 0.5) {
+    const subtractMinutes = [10, 15, 20, 25, 30][randomInt(0, 4)];
+    const start = normalizeClock(hour, minute + subtractMinutes + 5);
+    const end = normalizeClock(start.displayHour, start.minute - subtractMinutes);
+    prompt = `この時こくの ${subtractMinutes}分前は？`;
+    answer = clockLabel(end.displayHour, end.minute);
+    formula = `${clockLabel(start.displayHour, start.minute)} - ${subtractMinutes}分 = ${answer}`;
+    hint = "分をひいて、足りないときは時を 1 つもどして 60 分から考えます。";
+    choices = makeClockChoices(answer, (value) => clockLabel(value.displayHour, value.minute), [
+      normalizeClock(start.displayHour, start.minute - subtractMinutes + 5),
+      normalizeClock(start.displayHour, start.minute - subtractMinutes - 5),
+      normalizeClock(start.displayHour, start.minute + subtractMinutes),
+      normalizeClock(start.displayHour + 1, start.minute - subtractMinutes)
+    ]);
+    return {
+      topic,
+      fact,
+      prompt,
+      answer,
+      choices,
+      formula,
+      hint,
+      visual: clockFaceSvg(start.displayHour, start.minute),
+      key: factKey(topic.id, fact)
+    };
+  } else if (kind === 2) {
+    second = randomInt(0, 59);
     prompt = "この とけいは なんじ なんぷん なんびょう？";
     answer = clockLabel(hour, minute, second);
     formula = `短いはりは ${hour}時、長いはりは ${minute}分、赤いはりは ${second}秒`;
-    hint = "赤いはりが秒です。数字を 1 つすすむと 5 秒すすみます。";
+    hint = "赤いはりが秒です。数字のあいだの小さい線は 1 秒ずつです。";
     choices = makeClockChoices(answer, (value) => clockLabel(hour, value.minute, value.second), [
+      { minute, second: (second + 1) % 60 },
+      { minute, second: (second + 59) % 60 },
       { minute, second: (second + 5) % 60 },
       { minute: (minute + 5) % 60, second },
       { minute, second: (second + 50) % 60 }
@@ -420,15 +485,30 @@ function makeClockQuestion(topic, availableFacts) {
     ]);
   } else if (kind === 5) {
     period = "午後";
-    prompt = "この午後の時こくを、24時間であらわすと？";
-    answer = clockLabel(hour + 12, minute);
-    formula = `${hour} + 12 = ${hour + 12} → ${answer}`;
-    hint = "午後の時こくは、時に 12 をたします。分はそのままです。";
-    choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute), [
-      { hour, minute },
-      { hour: hour + 11, minute },
-      { hour: hour + 12, minute: (minute + 5) % 60 }
-    ]);
+    if (Math.random() > 0.45) {
+      const hour24 = hour + 12;
+      prompt = `${clockLabel(hour24, minute)} は、午前・午後でいうと？`;
+      answer = clockLabel(hour, minute, null, period);
+      formula = `${hour24} - 12 = ${hour} → ${answer}`;
+      hint = "13時から23時は午後です。12 をひくと、午後の何時かがわかります。";
+      choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute, null, value.period), [
+        { hour, minute, period: "午前" },
+        { hour: nextHour, minute, period },
+        { hour, minute: (minute + 5) % 60, period },
+        { hour: hour === 1 ? 12 : hour - 1, minute, period }
+      ]);
+    } else {
+      prompt = "この午後の時こくを、24時間であらわすと？";
+      answer = clockLabel(hour + 12, minute);
+      formula = `${hour} + 12 = ${hour + 12} → ${answer}`;
+      hint = "午後の時こくは、時に 12 をたします。分はそのままです。";
+      choices = makeClockChoices(answer, (value) => clockLabel(value.hour, value.minute), [
+        { hour, minute },
+        { hour: hour + 11, minute },
+        { hour: hour + 12, minute: (minute + 1) % 60 },
+        { hour: hour + 12, minute: (minute + 5) % 60 }
+      ]);
+    }
   }
 
   return {
