@@ -380,6 +380,7 @@ function makeClockQuestion(topic, availableFacts) {
   const hour = kind === 3 || kind === 5 ? randomInt(1, 11) : randomInt(1, 12);
   const nextHour = hour === 12 ? 1 : hour + 1;
   const minute = kind === 0 ? [0, 15, 30, 45][randomInt(0, 3)] : randomInt(0, 59);
+  const clockOffsetMode = randomInt(0, 3);
   let second = null;
   let period = "";
   let prompt = "この とけいは なんじ なんぷん？";
@@ -410,7 +411,7 @@ function makeClockQuestion(topic, availableFacts) {
       minute - 5,
       60 - ((minute + 5) % 60)
     ].filter((value) => value > 0 && value < 60));
-  } else if (kind === 1 && Math.random() > 0.45) {
+  } else if (kind === 1 && clockOffsetMode === 0) {
     const addMinutes = [10, 15, 20, 25, 30, 35, 40, 45][randomInt(0, 7)];
     const end = normalizeClock(hour, minute + addMinutes);
     prompt = `この時こくの ${addMinutes}分後は？`;
@@ -423,7 +424,23 @@ function makeClockQuestion(topic, availableFacts) {
       normalizeClock(hour, minute + addMinutes + 10),
       normalizeClock(hour, minute - addMinutes)
     ]);
-  } else if (kind === 1 && Math.random() > 0.5) {
+  } else if (kind === 1 && clockOffsetMode === 1) {
+    const addHours = randomInt(1, 3);
+    const addMinutes = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55][randomInt(0, 10)];
+    const totalAddMinutes = addHours * 60 + addMinutes;
+    const end = normalizeClock(hour, minute + totalAddMinutes);
+    prompt = `この時こくの ${addHours}時間${addMinutes}分後は？`;
+    answer = clockLabel(end.displayHour, end.minute);
+    formula = `${clockLabel(hour, minute)} + ${addHours}時間${addMinutes}分 = ${answer}`;
+    hint = "先に時間をすすめて、それから分をたします。60分をこえたら、さらに時を 1 つすすめます。";
+    choices = makeClockChoices(answer, (value) => clockLabel(value.displayHour, value.minute), [
+      normalizeClock(hour, minute + totalAddMinutes - 5),
+      normalizeClock(hour, minute + totalAddMinutes + 5),
+      normalizeClock(hour, minute + totalAddMinutes - 60),
+      normalizeClock(hour, minute + totalAddMinutes + 60),
+      normalizeClock(hour, minute + addMinutes)
+    ]);
+  } else if (kind === 1 && clockOffsetMode === 2) {
     const subtractMinutes = [10, 15, 20, 25, 30][randomInt(0, 4)];
     const start = normalizeClock(hour, minute + subtractMinutes + 5);
     const end = normalizeClock(start.displayHour, start.minute - subtractMinutes);
@@ -448,6 +465,22 @@ function makeClockQuestion(topic, availableFacts) {
       visual: clockFaceSvg(start.displayHour, start.minute),
       key: factKey(topic.id, fact)
     };
+  } else if (kind === 1 && clockOffsetMode === 3) {
+    const subtractHours = randomInt(1, 3);
+    const subtractMinutes = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55][randomInt(0, 10)];
+    const totalSubtractMinutes = subtractHours * 60 + subtractMinutes;
+    const end = normalizeClock(hour, minute - totalSubtractMinutes);
+    prompt = `この時こくの ${subtractHours}時間${subtractMinutes}分前は？`;
+    answer = clockLabel(end.displayHour, end.minute);
+    formula = `${clockLabel(hour, minute)} - ${subtractHours}時間${subtractMinutes}分 = ${answer}`;
+    hint = "先に時間をもどして、それから分をひきます。分が足りないときは、時を 1 つもどして 60 分から考えます。";
+    choices = makeClockChoices(answer, (value) => clockLabel(value.displayHour, value.minute), [
+      normalizeClock(hour, minute - totalSubtractMinutes - 5),
+      normalizeClock(hour, minute - totalSubtractMinutes + 5),
+      normalizeClock(hour, minute - totalSubtractMinutes - 60),
+      normalizeClock(hour, minute - totalSubtractMinutes + 60),
+      normalizeClock(hour, minute - subtractMinutes)
+    ]);
   } else if (kind === 2) {
     second = randomInt(0, 59);
     prompt = "この とけいは なんじ なんぷん なんびょう？";
