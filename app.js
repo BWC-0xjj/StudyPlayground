@@ -1159,9 +1159,8 @@ function answerQuestion(value) {
     button.disabled = true;
   });
 
-  round.answered = Math.min(round.total, round.answered + 1);
-
   if (isCorrect) {
+    round.answered = Math.min(round.total, round.answered + 1);
     progress.streak += 1;
     progress.stars += 1;
     progress.mastered[currentQuestion.key] = (progress.mastered[currentQuestion.key] || 0) + 1;
@@ -1206,7 +1205,7 @@ function renderAnswerProgress(isCorrect) {
   const pct = Math.round((round.answered / round.total) * 100);
   const status = isCorrect
     ? "スターが 1 こ ふえたよ"
-    : "だいじょうぶ。考え方を見て次へ進もう";
+    : "まだ 1 問ぶん。考え方を見て次へ進もう";
 
   return `
     <div class="answer-progress ${isCorrect ? "is-correct" : "is-wrong"}" aria-label="今日の進み具合">
